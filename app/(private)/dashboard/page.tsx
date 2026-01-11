@@ -1,4 +1,4 @@
-import { Eye, Phone } from "lucide-react"
+import { AlertTriangle, CalendarClock, Eye, Phone } from "lucide-react"
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
@@ -101,7 +101,7 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${badgeStyles[status]}`}
+      className={`inline-flex items-center absolute right-0 top-0 rounded-full border px-3 py-1 text-xs font-medium ${badgeStyles[status]}`}
     >
       {labels[status]}
     </span>
@@ -131,35 +131,58 @@ export default function Dashboard() {
     .reduce((sum, loan) => sum + loan.monthlyInterest, 0)
 
   const needToCollect = interestDueToday + overdueInterest
+  const dueTodayCount = todaysDue.filter((loan) => loan.dueDate === today).length
+  const overdueCount = todaysDue.filter((loan) => loan.status === "overdue").length
 
   return (
     <main className="w-full relative overflow-auto px-4 pt-4 flex flex-col gap-4">
       {/* Total Collection */}
-      <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-zinc-500">
-            How much money do I need to collect this January month?
-          </p>
-          <h1 className="text-3xl font-semibold leading-tight text-zinc-900 sm:text-4xl">
-            {currency.format(needToCollect)}
-          </h1>
-          <p className="text-sm text-zinc-600">
-            Includes today&apos;s dues and overdue interest waiting to be collected.
-          </p>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-zinc-600 mt-2">
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-amber-500" />
-            Due today
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-red-600" />
-            Overdue
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-green-600" />
-            Paid
-          </span>
+      <section className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-6 shadow-sm ring-1 ring-brand-100">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+              Collection focus
+            </p>
+            <h1 className="text-3xl font-semibold leading-tight text-zinc-900 sm:text-4xl">
+              {currency.format(needToCollect)}
+            </h1>
+            <p className="text-sm text-zinc-700">
+              Due today plus overdue interest waiting to be collected.
+            </p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700 ring-1 ring-amber-100">
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                {dueTodayCount} due today
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-red-50 px-3 py-1 font-semibold text-red-700 ring-1 ring-red-100">
+                <span className="h-2 w-2 rounded-full bg-red-600" />
+                {overdueCount} overdue
+              </span>
+            </div>
+          </div>
+
+          <div className="grid w-full max-w-sm grid-cols-2 gap-3 sm:max-w-xs">
+            <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-inner">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Due today</p>
+                <CalendarClock className="h-4 w-4 text-amber-600" />
+              </div>
+              <p className="mt-1 text-xl font-semibold text-zinc-900">
+                {currency.format(interestDueToday)}
+              </p>
+              <p className="text-xs text-zinc-600">Interest expected by {today}</p>
+            </div>
+            <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-inner">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500">Overdue</p>
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+              </div>
+              <p className="mt-1 text-xl font-semibold text-red-700">
+                {currency.format(overdueInterest)}
+              </p>
+              <p className="text-xs text-zinc-600">Waiting beyond due date</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -205,41 +228,77 @@ export default function Dashboard() {
           {todaysDue.map((loan) => (
             <div
               key={loan.id}
-              className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 shadow-sm"
+              className={`flex flex-col gap-4 rounded-2xl border px-4 py-4 shadow-sm ${
+                loan.status === "overdue"
+                  ? "border-red-200 bg-red-50/70 ring-1 ring-red-100"
+                  : "border-zinc-200 bg-white ring-1 ring-amber-100/60"
+              }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col">
-                  <p className="text-sm font-semibold text-zinc-900">{loan.borrower}</p>
-                  <p className="text-xs text-zinc-600">{loan.dueDate}</p>
+              <div className="relative">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-zinc-900 mb-2">{loan.borrower}</p>
+                  <div className="flex flex-row  gap-2 text-xs text-zinc-600">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ring-1 ${
+                        loan.status === "overdue"
+                          ? "bg-red-50 text-red-700 ring-red-100"
+                          : "bg-amber-50 text-amber-700 ring-amber-100"
+                      }`}
+                    >
+                      <CalendarClock className="h-3.5 w-3.5" />
+                      Due {loan.dueDate}
+                    </span>
+                    {loan.status === "overdue" && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 font-medium text-red-700 ring-1 ring-red-200">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        Needs attention
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <StatusBadge status={loan.status} />
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-md bg-white p-2 border border-gray-200">
-                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Loan</p>
-                  <p className="font-semibold text-zinc-900">{currency.format(loan.principal)}</p>
+                <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                  <p className="text-[11px] uppercase tracking-wide text-zinc-500">Principal</p>
+                  <p className="text-lg font-semibold text-zinc-900">
+                    {currency.format(loan.principal)}
+                  </p>
                 </div>
-                <div className="rounded-md bg-white p-2 border border-gray-200">
+                <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
                   <p className="text-[11px] uppercase tracking-wide text-zinc-500">Monthly</p>
-                  <p className="font-semibold text-zinc-900">
+                  <p className="text-lg font-semibold text-zinc-900">
                     {currency.format(loan.monthlyInterest)}
                   </p>
                 </div>
               </div>
 
-              <div className="flex justify-between gap-4">
-                <button className="flex items-center gap-2 rounded-md border border-zinc-200 bg-green-900 px-3 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-800">
-                  <Phone size={16} /> Call
+              <div className="flex flex-row gap-2 text-xs text-zinc-600">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 ring-1 ring-zinc-200">
+                  Interest cycle: monthly
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1 ring-1 ${
+                    loan.status === "overdue"
+                      ? "bg-red-50 text-red-700 ring-red-100"
+                      : "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                  }`}
+                >
+                  {loan.status === "overdue" ? "Collection priority: high" : "On track"}
+                </span>
+              </div>
+
+              <div className="flex flex-row gap-2">
+                <button className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800">
+                  <Phone size={14} /> Call
                 </button>
-                <div className="flex gap-2">
-                  <button className="flex items-center gap-2 rounded-md border border-zinc-900 bg-zinc-100 px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-200">
-                    View Details
-                  </button>
-                  <button className="rounded-md border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-800">
-                    Mark Paid
-                  </button>
-                </div>
+                <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50">
+                  View details
+                </button>
+                <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50">
+                  Mark collected
+                </button>
               </div>
             </div>
           ))}
