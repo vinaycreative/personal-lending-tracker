@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 
 import PublicLayout from "@/components/layout/PublicLayout"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,6 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -36,7 +35,7 @@ export default function Home() {
         return
       }
 
-      const next = searchParams.get("next")
+      const next = new URLSearchParams(window.location.search).get("next")
       router.replace(next && next.startsWith("/") ? next : "/dashboard")
     } catch {
       setError("Network error. Please try again.")
