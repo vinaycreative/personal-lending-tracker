@@ -18,9 +18,98 @@ export type CreateLoanInput = {
   }
 }
 
+export type PaymentStatus = "due" | "overdue" | "paid"
+export type LoanStatus = "active" | "closed" | string
+
+export type LoanListItem = {
+  id: string
+  borrower_id: string
+  borrower_name: string
+  borrower_phone: string | null
+  relationship_type: string | null
+  principal_amount: number
+  monthly_interest_amount: number
+  interest_due_day: number
+  loan_start_date: string
+  return_months: number | null
+  loan_status: LoanStatus
+  next_due_date: string // ISO date
+  payment_status: PaymentStatus
+  last_paid_at: string | null // ISO timestamp
+}
+
+export type ListLoansResponse = { loans: LoanListItem[] }
+
 async function createLoan(payload: CreateLoanInput) {
   const { data } = await axios.post("/api/loans", payload)
   return data
+}
+
+async function listLoans() {
+  const { data } = await axios.get<ListLoansResponse>("/api/loans")
+  return data.loans
+}
+
+export function loansListQuery() {
+  return {
+    queryKey: ["loans", "list"] as const,
+    queryFn: listLoans,
+  }
+}
+
+export type LoanDetailResponse = {
+  loan: {
+    id: string
+    borrower_id: string
+    principal_amount: number
+    interest_percentage: number
+    monthly_interest_amount: number
+    interest_due_day: number
+    loan_start_date: string
+    return_months: number | null
+    status: string
+    closed_at: string | null
+    created_at: string | null
+  }
+  borrower: {
+    id: string
+    name: string
+    phone: string | null
+    relationship_type: string | null
+    notes: string | null
+    created_at: string | null
+  } | null
+  monthly_interest_payments: {
+    id: string
+    loan_id: string
+    month_year: string
+    due_date: string
+    amount: number
+    status: string
+    paid_at: string | null
+    created_at: string | null
+  }[]
+  principal_payments: {
+    id: string
+    loan_id: string
+    amount: number
+    paid_at: string
+    notes: string | null
+    created_at: string | null
+  }[]
+}
+
+async function getLoanDetail(loanId: string) {
+  const { data } = await axios.get<LoanDetailResponse>(`/api/loans/${loanId}`)
+  return data
+}
+
+export function loanDetailQuery(loanId: string) {
+  return {
+    queryKey: ["loans", "detail", loanId] as const,
+    queryFn: () => getLoanDetail(loanId),
+    enabled: Boolean(loanId),
+  }
 }
 
 export function createLoanMutation(

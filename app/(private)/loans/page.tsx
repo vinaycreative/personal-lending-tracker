@@ -2,21 +2,21 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, Eye, Filter, Phone, Search } from "lucide-react"
+import { Eye, Filter, Phone, Search } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import MainLayout from "@/components/layout/MainLayout"
-
-type PaymentStatus = "due" | "overdue" | "paid"
+import { loansListQuery, type LoanStatus } from "@/queries/loanQueries"
 
 type Loan = {
-  id: number
+  id: string
   borrower: string
   principal: number
   monthlyInterest: number
-  nextDue: string
-  status: PaymentStatus
+  loanStatus: LoanStatus
   relationship: string
   interestDueDay: number
-  lastPayment: string
+  phone: string | null
+  startDate: string
 }
 
 const currency = new Intl.NumberFormat("en-IN", {
@@ -25,121 +25,89 @@ const currency = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0,
 })
 
-const loans: Loan[] = [
-  {
-    id: 1,
-    borrower: "Asha Traders",
-    principal: 120000,
-    monthlyInterest: 1800,
-    nextDue: "Jan 11, 2026",
-    status: "due",
-    relationship: "Business",
-    interestDueDay: 11,
-    lastPayment: "Paid Dec 11",
-  },
-  {
-    id: 2,
-    borrower: "Ravi Metals",
-    principal: 85000,
-    monthlyInterest: 1275,
-    nextDue: "Jan 11, 2026",
-    status: "due",
-    relationship: "Business",
-    interestDueDay: 11,
-    lastPayment: "Paid Dec 11",
-  },
-  {
-    id: 3,
-    borrower: "Sharma Transports",
-    principal: 150000,
-    monthlyInterest: 2400,
-    nextDue: "Jan 09, 2026",
-    status: "overdue",
-    relationship: "Logistics",
-    interestDueDay: 9,
-    lastPayment: "Paid Nov 09",
-  },
-  {
-    id: 4,
-    borrower: "Meena Kirana",
-    principal: 42000,
-    monthlyInterest: 546,
-    nextDue: "Jan 13, 2026",
-    status: "due",
-    relationship: "Retail",
-    interestDueDay: 13,
-    lastPayment: "Paid Dec 13",
-  },
-  {
-    id: 5,
-    borrower: "Lal Farms",
-    principal: 69000,
-    monthlyInterest: 900,
-    nextDue: "Jan 07, 2026",
-    status: "overdue",
-    relationship: "Agri",
-    interestDueDay: 7,
-    lastPayment: "Paid Nov 07",
-  },
-  {
-    id: 6,
-    borrower: "Kunal Exports",
-    principal: 98000,
-    monthlyInterest: 1500,
-    nextDue: "Jan 21, 2026",
-    status: "paid",
-    relationship: "Business",
-    interestDueDay: 21,
-    lastPayment: "Paid Jan 21",
-  },
-]
+const dateFormatter = new Intl.DateTimeFormat("en-IN", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+})
 
-const badgeStyles: Record<PaymentStatus, string> = {
-  paid: "bg-green-50 text-green-700 border-green-200",
-  overdue: "bg-red-50 text-red-700 border-red-200",
-  due: "bg-amber-50 text-amber-700 border-amber-200",
+function formatIsoDate(iso: string) {
+  const date = new Date(`${iso}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return iso
+  return dateFormatter.format(date)
 }
 
-function StatusBadge({ status }: { status: PaymentStatus }) {
-  const labels: Record<PaymentStatus, string> = {
-    paid: "Paid",
-    overdue: "Overdue",
-    due: "Due Today",
+const badgeStyles: Record<"active" | "closed", string> = {
+  active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  closed: "bg-zinc-100 text-zinc-700 border-zinc-200",
+}
+
+function normalizeLoanStatus(status: LoanStatus): "active" | "closed" {
+  return status === "closed" ? "closed" : "active"
+}
+
+function StatusBadge({ status }: { status: LoanStatus }) {
+  const normalized = normalizeLoanStatus(status)
+  const labels: Record<"active" | "closed", string> = {
+    active: "Active",
+    closed: "Closed",
   }
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${badgeStyles[status]}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${badgeStyles[normalized]}`}
     >
-      {labels[status]}
+      {labels[normalized]}
     </span>
   )
 }
 
 export default function LoansPage() {
   const router = useRouter()
-  const [statusFilter, setStatusFilter] = useState<PaymentStatus | "all">("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "closed">("all")
   const [query, setQuery] = useState("")
+
+  const loansQuery = useQuery(loansListQuery())
+
+  const loans = useMemo<Loan[]>(
+    () =>
+      (loansQuery.data ?? []).map((item) => ({
+        id: item.id,
+        borrower: item.borrower_name,
+        principal: item.principal_amount,
+        monthlyInterest: item.monthly_interest_amount,
+        loanStatus: item.loan_status,
+        relationship: item.relationship_type ?? "—",
+        interestDueDay: item.interest_due_day,
+        phone: item.borrower_phone,
+        startDate: formatIsoDate(item.loan_start_date),
+      })),
+    [loansQuery.data]
+  )
 
   const totals = useMemo(
     () =>
       loans.reduce(
         (acc, loan) => {
-          acc.principal += loan.principal
-          acc.monthlyInterest += loan.monthlyInterest
-          if (loan.status === "due" || loan.status === "overdue") acc.active += 1
+          if (normalizeLoanStatus(loan.loanStatus) === "active") {
+            acc.principal += loan.principal
+            acc.monthlyInterest += loan.monthlyInterest
+            acc.active += 1
+          }
           return acc
         },
         { principal: 0, monthlyInterest: 0, active: 0 }
       ),
-    []
+    [loans]
   )
 
   const filteredLoans = useMemo(() => {
     const normalizedQuery = query.toLowerCase().trim()
 
     return loans
-      .filter((loan) => (statusFilter === "all" ? true : loan.status === statusFilter))
+      .filter((loan) =>
+        statusFilter === "all" ? true : normalizeLoanStatus(loan.loanStatus) === statusFilter
+      )
       .filter((loan) =>
         normalizedQuery
           ? loan.borrower.toLowerCase().includes(normalizedQuery) ||
@@ -147,20 +115,25 @@ export default function LoansPage() {
           : true
       )
       .sort((a, b) => {
-        const weight: Record<PaymentStatus, number> = { overdue: 0, due: 1, paid: 2 }
-        return weight[a.status] - weight[b.status]
+        const weight: Record<"active" | "closed", number> = { active: 0, closed: 1 }
+        return (
+          weight[normalizeLoanStatus(a.loanStatus)] - weight[normalizeLoanStatus(b.loanStatus)]
+        )
       })
-  }, [query, statusFilter])
+  }, [loans, query, statusFilter])
 
-  const statusChips: { key: PaymentStatus | "all"; label: string; count: number }[] = [
+  const statusChips: { key: "all" | "active" | "closed"; label: string; count: number }[] = [
     { key: "all", label: "All", count: loans.length },
-    { key: "due", label: "Due", count: loans.filter((loan) => loan.status === "due").length },
     {
-      key: "overdue",
-      label: "Overdue",
-      count: loans.filter((loan) => loan.status === "overdue").length,
+      key: "active",
+      label: "Active",
+      count: loans.filter((l) => normalizeLoanStatus(l.loanStatus) === "active").length,
     },
-    { key: "paid", label: "Paid", count: loans.filter((loan) => loan.status === "paid").length },
+    {
+      key: "closed",
+      label: "Closed",
+      count: loans.filter((l) => normalizeLoanStatus(l.loanStatus) === "closed").length,
+    },
   ]
 
   return (
@@ -170,6 +143,19 @@ export default function LoansPage() {
         <h1 className="text-2xl font-semibold text-zinc-900">Track every borrower in one place</h1>
         <p className="text-sm text-zinc-600">Clear totals, quick filters, actions within reach.</p>
       </header>
+
+      {loansQuery.isLoading && (
+        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <p className="text-sm text-zinc-600">Loading loans…</p>
+        </section>
+      )}
+
+      {loansQuery.isError && (
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
+          <p className="text-sm font-semibold text-red-800">Failed to load loans</p>
+          <p className="text-xs text-red-700">Please refresh and try again.</p>
+        </section>
+      )}
 
       <section className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-4 shadow-sm ring-1 ring-brand-100">
         <div className="flex items-start justify-between gap-4">
@@ -243,20 +229,6 @@ export default function LoansPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
             {filteredLoans.length} loans
           </p>
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-amber-500" />
-              Due
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-red-600" />
-              Overdue
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-green-600" />
-              Paid
-            </span>
-          </div>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -269,10 +241,10 @@ export default function LoansPage() {
                 <div>
                   <p className="text-sm font-semibold text-zinc-900">{loan.borrower}</p>
                   <p className="text-xs text-zinc-600">
-                    {loan.relationship} • Due on {loan.nextDue}
+                    {loan.relationship} • Started {loan.startDate}
                   </p>
                 </div>
-                <StatusBadge status={loan.status} />
+                <StatusBadge status={loan.loanStatus} />
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-sm">
@@ -293,23 +265,27 @@ export default function LoansPage() {
               </div>
 
               <div className="flex flex-col gap-2 border-t border-dashed border-zinc-200 pt-2 text-xs text-zinc-600 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-zinc-600">
+                  Interest is collected monthly. Use profile to manage payments.
+                </p>
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span>Last payment: {loan.lastPayment}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50">
+                  <a
+                    href={loan.phone ? `tel:${loan.phone}` : undefined}
+                    aria-disabled={!loan.phone}
+                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-medium shadow-sm transition ${
+                      loan.phone
+                        ? "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+                        : "border-zinc-200 bg-zinc-50 text-zinc-400 pointer-events-none"
+                    }`}
+                  >
                     <Phone size={14} /> Call
-                  </button>
+                  </a>
                   <button
                     type="button"
                     onClick={() => router.push(`/loans/${loan.id}`)}
-                    className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50"
+                    className="rounded-md border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800"
                   >
                     <Eye size={14} /> View Profile
-                  </button>
-                  <button className="rounded-md border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800">
-                    Mark Paid
                   </button>
                 </div>
               </div>
