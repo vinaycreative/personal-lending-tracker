@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Personal Lending Ledger">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#g)"/>
+  <rect x="132" y="128" width="248" height="256" rx="28" fill="#ffffff" opacity="0.96"/>
+  <rect x="164" y="172" width="184" height="20" rx="10" fill="#0f172a" opacity="0.85"/>
+  <rect x="164" y="214" width="184" height="20" rx="10" fill="#0f172a" opacity="0.70"/>
+  <rect x="164" y="256" width="144" height="20" rx="10" fill="#0f172a" opacity="0.70"/>
+  <path d="M164 320h84a10 10 0 0 1 10 10v0a10 10 0 0 1-10 10h-84a10 10 0 0 1-10-10v0a10 10 0 0 1 10-10z" fill="#16a34a"/>
+</svg>
+
