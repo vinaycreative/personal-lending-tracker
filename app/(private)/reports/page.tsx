@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -8,13 +8,17 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
-  TrendingDown,
-  TrendingUp,
   Wallet,
 } from "lucide-react"
 import MainLayout from "@/components/layout/MainLayout"
+import { useQuery } from "@tanstack/react-query"
+import moment from "moment"
+import {
+  reportsQuery,
+  type ReportsResponse,
+  type ReportsTimeRange,
+} from "@/queries/reportsQueries"
 
-type TimeRange = "thisMonth" | "lastMonth" | "quarter"
 type MovementStatus = "settled" | "pending" | "overdue"
 
 const currency = new Intl.NumberFormat("en-IN", {
@@ -23,143 +27,12 @@ const currency = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0,
 })
 
-const timeframes: Record<
-  TimeRange,
-  {
-    label: string
-    inflow: number
-    outflow: number
-    principalOutstanding: number
-    interestPipeline: number
-    collectedInterest: number
-    overdueInterest: number
-    collectionRate: number
-    onTimeRate: number
-  }
-> = {
-  thisMonth: {
-    label: "Jan 2026",
-    inflow: 164000,
-    outflow: 82000,
-    principalOutstanding: 566000,
-    interestPipeline: 8400,
-    collectedInterest: 6400,
-    overdueInterest: 2000,
-    collectionRate: 0.86,
-    onTimeRate: 0.78,
-  },
-  lastMonth: {
-    label: "Dec 2025",
-    inflow: 132000,
-    outflow: 40000,
-    principalOutstanding: 548000,
-    interestPipeline: 8200,
-    collectedInterest: 7820,
-    overdueInterest: 380,
-    collectionRate: 0.94,
-    onTimeRate: 0.84,
-  },
-  quarter: {
-    label: "Last 90 days",
-    inflow: 392000,
-    outflow: 198000,
-    principalOutstanding: 566000,
-    interestPipeline: 25200,
-    collectedInterest: 21000,
-    overdueInterest: 4200,
-    collectionRate: 0.89,
-    onTimeRate: 0.81,
-  },
+type TimeRange = ReportsTimeRange
+
+function formatMovementDate(dateIso: string) {
+  const m = moment.utc(dateIso, "YYYY-MM-DD", true)
+  return m.isValid() ? m.format("MMM DD") : dateIso
 }
-
-const weeklyPace: Record<
-  TimeRange,
-  { label: string; inflow: number; outflow: number; collected: number }[]
-> = {
-  thisMonth: [
-    { label: "Week 1", inflow: 42000, outflow: 18000, collected: 1800 },
-    { label: "Week 2", inflow: 36000, outflow: 22000, collected: 1500 },
-    { label: "Week 3", inflow: 46000, outflow: 21000, collected: 1700 },
-    { label: "Week 4", inflow: 40000, outflow: 21000, collected: 1400 },
-  ],
-  lastMonth: [
-    { label: "Week 1", inflow: 32000, outflow: 12000, collected: 2000 },
-    { label: "Week 2", inflow: 28000, outflow: 9000, collected: 1800 },
-    { label: "Week 3", inflow: 36000, outflow: 11000, collected: 2100 },
-    { label: "Week 4", inflow: 36000, outflow: 8000, collected: 1900 },
-  ],
-  quarter: [
-    { label: "Month 1", inflow: 132000, outflow: 40000, collected: 7800 },
-    { label: "Month 2", inflow: 96000, outflow: 62000, collected: 6600 },
-    { label: "Month 3", inflow: 164000, outflow: 82000, collected: 6600 },
-  ],
-}
-
-const topBorrowers = [
-  { name: "Asha Traders", monthlyInterest: 1800, pendingInterest: 600, onTime: "92%" },
-  { name: "Sharma Transports", monthlyInterest: 2400, pendingInterest: 900, onTime: "78%" },
-  { name: "Ravi Metals", monthlyInterest: 1275, pendingInterest: 0, onTime: "100%" },
-  { name: "Meena Kirana", monthlyInterest: 546, pendingInterest: 280, onTime: "88%" },
-  { name: "Lal Farms", monthlyInterest: 900, pendingInterest: 220, onTime: "74%" },
-]
-
-const movements: {
-  id: string
-  title: string
-  party: string
-  amount: number
-  date: string
-  status: MovementStatus
-}[] = [
-  {
-    id: "m1",
-    title: "Interest collected",
-    party: "Ravi Metals",
-    amount: 1800,
-    date: "Jan 11",
-    status: "settled",
-  },
-  {
-    id: "m2",
-    title: "Interest collected",
-    party: "Asha Traders",
-    amount: 1800,
-    date: "Jan 11",
-    status: "settled",
-  },
-  {
-    id: "m3",
-    title: "Principal returned",
-    party: "Kunal Exports",
-    amount: 50000,
-    date: "Jan 09",
-    status: "settled",
-  },
-  {
-    id: "m4",
-    title: "New loan disbursed",
-    party: "Meena Kirana",
-    amount: 22000,
-    date: "Jan 08",
-    status: "settled",
-  },
-  {
-    id: "m5",
-    title: "Interest overdue",
-    party: "Sharma Transports",
-    amount: 900,
-    date: "Jan 09",
-    status: "overdue",
-  },
-  {
-    id: "m6",
-    title: "Interest pending",
-    party: "Lal Farms",
-    amount: 400,
-    date: "Jan 07",
-    status: "pending",
-  },
-]
 
 const statusStyles: Record<MovementStatus, { label: string; classes: string }> = {
   settled: { label: "Settled", classes: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -169,25 +42,24 @@ const statusStyles: Record<MovementStatus, { label: string; classes: string }> =
 
 export default function ReportsPage() {
   const [range, setRange] = useState<TimeRange>("thisMonth")
-  const metrics = timeframes[range]
+  const { data, isLoading, isError } = useQuery(reportsQuery(range))
 
-  const netFlow = useMemo(
-    () => metrics.inflow - metrics.outflow,
-    [metrics.inflow, metrics.outflow]
-  )
-  const weekly = weeklyPace[range]
-  const maxFlow = Math.max(...weekly.map((item) => Math.max(item.inflow, item.outflow)))
+  const report: ReportsResponse | null = data ?? null
+  const metrics = report?.metrics ?? {
+    inflow: 0,
+    outflow: 0,
+    principalOutstanding: 0,
+    interestPipeline: 0,
+    collectedInterest: 0,
+    overdueInterest: 0,
+    collectionRate: 0,
+    onTimeRate: 0,
+  }
 
-  const netFlowStyle =
-    netFlow >= 0
-      ? {
-          icon: <TrendingUp className="h-4 w-4 text-emerald-600" />,
-          tone: "bg-emerald-50 text-emerald-800",
-        }
-      : {
-          icon: <TrendingDown className="h-4 w-4 text-rose-600" />,
-          tone: "bg-rose-50 text-rose-800",
-        }
+  const weekly = report?.weeklyPace ?? []
+  const maxFlow = weekly.length
+    ? Math.max(...weekly.map((item) => Math.max(item.inflow, item.outflow)))
+    : 1
 
   return (
     <MainLayout>
@@ -198,6 +70,20 @@ export default function ReportsPage() {
           Stay on top of principal outstanding, inflows, and how collections are performing.
         </p>
       </header>
+
+      {isLoading ? (
+        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <p className="text-sm font-medium text-zinc-900">Loading reports…</p>
+          <p className="text-xs text-zinc-600">
+            Crunching loans, collections, and cash movements.
+          </p>
+        </div>
+      ) : isError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-sm">
+          <p className="text-sm font-semibold text-red-800">Couldn’t load reports</p>
+          <p className="text-xs text-red-700">Please refresh and try again.</p>
+        </div>
+      ) : null}
 
       <section className="flex flex-wrap items-center gap-2">
         {(["thisMonth", "lastMonth", "quarter"] as TimeRange[]).map((key) => {
@@ -212,7 +98,11 @@ export default function ReportsPage() {
                   : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50"
               }`}
             >
-              {timeframes[key].label}
+              {key === "thisMonth"
+                ? "This month"
+                : key === "lastMonth"
+                ? "Last month"
+                : "Last 90 days"}
             </button>
           )
         })}
@@ -222,21 +112,24 @@ export default function ReportsPage() {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-700">
-              Net movement
+              Interest collected
             </p>
             <div className="flex items-center gap-2">
               <span className="text-3xl font-semibold text-brand-900">
-                {currency.format(netFlow)}
+                {currency.format(metrics.collectedInterest)}
               </span>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium ${netFlowStyle.tone}`}
-              >
-                {netFlowStyle.icon}
-                {netFlow >= 0 ? "Positive cash flow" : "Negative cash flow"}
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                Collection rate {Math.round(metrics.collectionRate * 100)}%
               </span>
             </div>
             <p className="text-xs text-brand-800">
-              Inflow {currency.format(metrics.inflow)} • Outflow {currency.format(metrics.outflow)}
+              Due {currency.format(metrics.interestPipeline)} • Overdue{" "}
+              {currency.format(metrics.overdueInterest)}
+            </p>
+            <p className="text-[11px] text-brand-700/90">
+              This report treats principal and interest separately. Principal outstanding does not
+              change when interest is paid.
             </p>
           </div>
           <div className="rounded-xl bg-white/90 px-4 py-3 text-right shadow-inner ring-1 ring-brand-100">
@@ -289,9 +182,9 @@ export default function ReportsPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
-                Cash movement
+                Interest movement
               </p>
-              <p className="text-sm text-zinc-700">Inflow vs outflow</p>
+              <p className="text-sm text-zinc-700">Collected vs due (interest)</p>
             </div>
             <Wallet className="h-5 w-5 text-brand-700" />
           </div>
@@ -299,22 +192,22 @@ export default function ReportsPage() {
             <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
                 <ArrowDownRight className="h-4 w-4" />
-                Inflow
+                Collected
               </div>
               <p className="text-2xl font-semibold text-emerald-900">
-                {currency.format(metrics.inflow)}
+                {currency.format(metrics.collectedInterest)}
               </p>
-              <p className="text-xs text-emerald-700">Interest + principal returned</p>
+              <p className="text-xs text-emerald-700">Interest received</p>
             </div>
             <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-rose-800">
                 <ArrowUpRight className="h-4 w-4" />
-                Outflow
+                Due
               </div>
               <p className="text-2xl font-semibold text-rose-900">
-                {currency.format(metrics.outflow)}
+                {currency.format(metrics.interestPipeline)}
               </p>
-              <p className="text-xs text-rose-700">New loans disbursed</p>
+              <p className="text-xs text-rose-700">Scheduled interest in range</p>
             </div>
           </div>
           <div className="space-y-2">
@@ -326,7 +219,7 @@ export default function ReportsPage() {
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-900">
                   <span>{item.label}</span>
                   <span className="text-xs text-zinc-500">
-                    {currency.format(item.inflow - item.outflow)} net
+                    Collected {currency.format(item.inflow)} • Due {currency.format(item.outflow)}
                   </span>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
@@ -345,12 +238,19 @@ export default function ReportsPage() {
                     </div>
                   </div>
                   <div className="flex flex-col text-[11px] text-zinc-600">
-                    <span className="text-emerald-700">In {currency.format(item.inflow)}</span>
-                    <span className="text-rose-700">Out {currency.format(item.outflow)}</span>
+                    <span className="text-emerald-700">
+                      Collected {currency.format(item.inflow)}
+                    </span>
+                    <span className="text-rose-700">Due {currency.format(item.outflow)}</span>
                   </div>
                 </div>
               </div>
             ))}
+            {!weekly.length && !isLoading ? (
+              <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-600">
+                No movement data found for this range yet.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -425,7 +325,7 @@ export default function ReportsPage() {
             <CalendarClock className="h-5 w-5 text-brand-700" />
           </div>
           <div className="flex flex-col gap-2">
-            {topBorrowers.map((borrower) => (
+            {(report?.topBorrowers ?? []).map((borrower) => (
               <div
                 key={borrower.name}
                 className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
@@ -442,6 +342,11 @@ export default function ReportsPage() {
                 </span>
               </div>
             ))}
+            {!(report?.topBorrowers ?? []).length && !isLoading ? (
+              <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-600">
+                No borrower stats yet for this range.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -456,7 +361,7 @@ export default function ReportsPage() {
             <CalendarClock className="h-5 w-5 text-brand-700" />
           </div>
           <div className="flex flex-col gap-2">
-            {movements.map((movement) => (
+            {(report?.movements ?? []).map((movement) => (
               <div
                 key={movement.id}
                 className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
@@ -464,7 +369,7 @@ export default function ReportsPage() {
                 <div className="space-y-0.5">
                   <p className="text-sm font-semibold text-zinc-900">{movement.title}</p>
                   <p className="text-xs text-zinc-600">
-                    {movement.party} • {movement.date}
+                    {movement.party} • {formatMovementDate(movement.date)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -481,6 +386,11 @@ export default function ReportsPage() {
                 </div>
               </div>
             ))}
+            {!(report?.movements ?? []).length && !isLoading ? (
+              <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-600">
+                No movements found for this range.
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
