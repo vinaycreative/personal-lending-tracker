@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Bell,
   CalendarClock,
@@ -143,21 +144,42 @@ function ToggleRow({
 
 export default function SettingsPage() {
   const [toggles, setToggles] = useState<Record<string, boolean>>(initialToggleState)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const router = useRouter()
 
   const handleToggle = (id: string) => {
     setToggles((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } finally {
+      router.replace("/")
+      setIsLoggingOut(false)
+    }
+  }
+
   return (
     <MainLayout>
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
-          Settings
-        </p>
-        <h1 className="text-2xl font-semibold text-zinc-900">Fine-tune your lending workspace</h1>
-        <p className="text-sm text-zinc-600">
-          Control reminders, data safety, and the way the app looks on your phone.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+            Settings
+          </p>
+          <h1 className="text-2xl font-semibold text-zinc-900">Fine-tune your lending workspace</h1>
+          <p className="text-sm text-zinc-600">
+            Control reminders, data safety, and the way the app looks on your phone.
+          </p>
+        </div>
+        <button
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:opacity-60"
+        >
+          {isLoggingOut ? "Logging out..." : "Log out"}
+        </button>
       </header>
 
       <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
