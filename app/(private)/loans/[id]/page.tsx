@@ -9,6 +9,7 @@ import {
   Phone,
   Receipt,
 } from "lucide-react"
+import MainLayout from "@/components/layout/MainLayout"
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
@@ -223,7 +224,7 @@ export default async function BorrowerProfilePage({
   )
 
   return (
-    <main className="relative w-full overflow-auto px-4 pb-28 pt-6 space-y-5">
+    <MainLayout>
       <div className="flex items-center gap-2 text-sm text-zinc-600">
         <Link
           href="/loans"
@@ -382,6 +383,6 @@ export default async function BorrowerProfilePage({
           ))}
         </div>
       </section>
-    </main>
+    </MainLayout>
   )
 }

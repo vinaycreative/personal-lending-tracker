@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react"
+import MainLayout from "@/components/layout/MainLayout"
 
 type TimeRange = "thisMonth" | "lastMonth" | "quarter"
 type MovementStatus = "settled" | "pending" | "overdue"
@@ -102,15 +103,63 @@ const topBorrowers = [
   { name: "Lal Farms", monthlyInterest: 900, pendingInterest: 220, onTime: "74%" },
 ]
 
-const movements: { id: string; title: string; party: string; amount: number; date: string; status: MovementStatus }[] =
-  [
-    { id: "m1", title: "Interest collected", party: "Ravi Metals", amount: 1800, date: "Jan 11", status: "settled" },
-    { id: "m2", title: "Interest collected", party: "Asha Traders", amount: 1800, date: "Jan 11", status: "settled" },
-    { id: "m3", title: "Principal returned", party: "Kunal Exports", amount: 50000, date: "Jan 09", status: "settled" },
-    { id: "m4", title: "New loan disbursed", party: "Meena Kirana", amount: 22000, date: "Jan 08", status: "settled" },
-    { id: "m5", title: "Interest overdue", party: "Sharma Transports", amount: 900, date: "Jan 09", status: "overdue" },
-    { id: "m6", title: "Interest pending", party: "Lal Farms", amount: 400, date: "Jan 07", status: "pending" },
-  ]
+const movements: {
+  id: string
+  title: string
+  party: string
+  amount: number
+  date: string
+  status: MovementStatus
+}[] = [
+  {
+    id: "m1",
+    title: "Interest collected",
+    party: "Ravi Metals",
+    amount: 1800,
+    date: "Jan 11",
+    status: "settled",
+  },
+  {
+    id: "m2",
+    title: "Interest collected",
+    party: "Asha Traders",
+    amount: 1800,
+    date: "Jan 11",
+    status: "settled",
+  },
+  {
+    id: "m3",
+    title: "Principal returned",
+    party: "Kunal Exports",
+    amount: 50000,
+    date: "Jan 09",
+    status: "settled",
+  },
+  {
+    id: "m4",
+    title: "New loan disbursed",
+    party: "Meena Kirana",
+    amount: 22000,
+    date: "Jan 08",
+    status: "settled",
+  },
+  {
+    id: "m5",
+    title: "Interest overdue",
+    party: "Sharma Transports",
+    amount: 900,
+    date: "Jan 09",
+    status: "overdue",
+  },
+  {
+    id: "m6",
+    title: "Interest pending",
+    party: "Lal Farms",
+    amount: 400,
+    date: "Jan 07",
+    status: "pending",
+  },
+]
 
 const statusStyles: Record<MovementStatus, { label: string; classes: string }> = {
   settled: { label: "Settled", classes: "bg-emerald-50 text-emerald-700 border-emerald-200" },
@@ -122,17 +171,26 @@ export default function ReportsPage() {
   const [range, setRange] = useState<TimeRange>("thisMonth")
   const metrics = timeframes[range]
 
-  const netFlow = useMemo(() => metrics.inflow - metrics.outflow, [metrics.inflow, metrics.outflow])
+  const netFlow = useMemo(
+    () => metrics.inflow - metrics.outflow,
+    [metrics.inflow, metrics.outflow]
+  )
   const weekly = weeklyPace[range]
   const maxFlow = Math.max(...weekly.map((item) => Math.max(item.inflow, item.outflow)))
 
   const netFlowStyle =
     netFlow >= 0
-      ? { icon: <TrendingUp className="h-4 w-4 text-emerald-600" />, tone: "bg-emerald-50 text-emerald-800" }
-      : { icon: <TrendingDown className="h-4 w-4 text-rose-600" />, tone: "bg-rose-50 text-rose-800" }
+      ? {
+          icon: <TrendingUp className="h-4 w-4 text-emerald-600" />,
+          tone: "bg-emerald-50 text-emerald-800",
+        }
+      : {
+          icon: <TrendingDown className="h-4 w-4 text-rose-600" />,
+          tone: "bg-rose-50 text-rose-800",
+        }
 
   return (
-    <main className="relative w-full overflow-auto px-4 pb-32 pt-6 space-y-6">
+    <MainLayout>
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">Reports</p>
         <h1 className="text-2xl font-semibold text-zinc-900">Analytics and money flow</h1>
@@ -163,10 +221,16 @@ export default function ReportsPage() {
       <section className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-4 ring-1 ring-brand-100 shadow-sm space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-700">Net movement</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-700">
+              Net movement
+            </p>
             <div className="flex items-center gap-2">
-              <span className="text-3xl font-semibold text-brand-900">{currency.format(netFlow)}</span>
-              <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium ${netFlowStyle.tone}`}>
+              <span className="text-3xl font-semibold text-brand-900">
+                {currency.format(netFlow)}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium ${netFlowStyle.tone}`}
+              >
                 {netFlowStyle.icon}
                 {netFlow >= 0 ? "Positive cash flow" : "Negative cash flow"}
               </span>
@@ -177,30 +241,44 @@ export default function ReportsPage() {
           </div>
           <div className="rounded-xl bg-white/90 px-4 py-3 text-right shadow-inner ring-1 ring-brand-100">
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">Collection rate</p>
-            <p className="text-xl font-semibold text-zinc-900">{Math.round(metrics.collectionRate * 100)}%</p>
-            <p className="text-xs text-zinc-600">On-time {Math.round(metrics.onTimeRate * 100)}%</p>
+            <p className="text-xl font-semibold text-zinc-900">
+              {Math.round(metrics.collectionRate * 100)}%
+            </p>
+            <p className="text-xs text-zinc-600">
+              On-time {Math.round(metrics.onTimeRate * 100)}%
+            </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Principal Outstanding</p>
-            <p className="text-lg font-semibold text-zinc-900">{currency.format(metrics.principalOutstanding)}</p>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+              Principal Outstanding
+            </p>
+            <p className="text-lg font-semibold text-zinc-900">
+              {currency.format(metrics.principalOutstanding)}
+            </p>
             <p className="text-[11px] text-zinc-500">Across active borrowers</p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">Interest Pipeline</p>
-            <p className="text-lg font-semibold text-zinc-900">{currency.format(metrics.interestPipeline)}</p>
+            <p className="text-lg font-semibold text-zinc-900">
+              {currency.format(metrics.interestPipeline)}
+            </p>
             <p className="text-[11px] text-zinc-500">Due in selected range</p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">Collected</p>
-            <p className="text-lg font-semibold text-emerald-700">{currency.format(metrics.collectedInterest)}</p>
+            <p className="text-lg font-semibold text-emerald-700">
+              {currency.format(metrics.collectedInterest)}
+            </p>
             <p className="text-[11px] text-zinc-500">Interest received</p>
           </div>
           <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
             <p className="text-[11px] uppercase tracking-wide text-zinc-500">Overdue Interest</p>
-            <p className="text-lg font-semibold text-rose-700">{currency.format(metrics.overdueInterest)}</p>
+            <p className="text-lg font-semibold text-rose-700">
+              {currency.format(metrics.overdueInterest)}
+            </p>
             <p className="text-[11px] text-zinc-500">Needs follow up</p>
           </div>
         </div>
@@ -210,7 +288,9 @@ export default function ReportsPage() {
         <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Cash movement</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                Cash movement
+              </p>
               <p className="text-sm text-zinc-700">Inflow vs outflow</p>
             </div>
             <Wallet className="h-5 w-5 text-brand-700" />
@@ -221,7 +301,9 @@ export default function ReportsPage() {
                 <ArrowDownRight className="h-4 w-4" />
                 Inflow
               </div>
-              <p className="text-2xl font-semibold text-emerald-900">{currency.format(metrics.inflow)}</p>
+              <p className="text-2xl font-semibold text-emerald-900">
+                {currency.format(metrics.inflow)}
+              </p>
               <p className="text-xs text-emerald-700">Interest + principal returned</p>
             </div>
             <div className="rounded-xl border border-rose-100 bg-rose-50 p-3">
@@ -229,13 +311,18 @@ export default function ReportsPage() {
                 <ArrowUpRight className="h-4 w-4" />
                 Outflow
               </div>
-              <p className="text-2xl font-semibold text-rose-900">{currency.format(metrics.outflow)}</p>
+              <p className="text-2xl font-semibold text-rose-900">
+                {currency.format(metrics.outflow)}
+              </p>
               <p className="text-xs text-rose-700">New loans disbursed</p>
             </div>
           </div>
           <div className="space-y-2">
             {weekly.map((item) => (
-              <div key={item.label} className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+              <div
+                key={item.label}
+                className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+              >
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-900">
                   <span>{item.label}</span>
                   <span className="text-xs text-zinc-500">
@@ -385,7 +472,9 @@ export default function ReportsPage() {
                     {currency.format(movement.amount)}
                   </span>
                   <span
-                    className={`rounded-full border px-3 py-1 text-[11px] font-medium ${statusStyles[movement.status].classes}`}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-medium ${
+                      statusStyles[movement.status].classes
+                    }`}
                   >
                     {statusStyles[movement.status].label}
                   </span>
@@ -395,6 +484,6 @@ export default function ReportsPage() {
           </div>
         </div>
       </section>
-    </main>
+    </MainLayout>
   )
 }

@@ -1,6 +1,9 @@
 "use client"
 
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useMemo, useState } from "react"
+import { createLoanMutation, type CreateLoanInput } from "@/queries/loanQueries"
+import MainLayout from "@/components/layout/MainLayout"
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -19,6 +22,8 @@ const durationLabels: Record<string, string> = {
   "12m": "1 year",
 }
 
+const durationToMonths: Record<string, number> = { "1m": 1, "4m": 4, "6m": 6, "12m": 12 }
+
 export default function AddLoanPage() {
   const formId = "add-loan-form"
   const [borrowerName, setBorrowerName] = useState("")
@@ -29,6 +34,10 @@ export default function AddLoanPage() {
   const [interestDueDay, setInterestDueDay] = useState<number>(defaultInterestDay)
   const [startDate, setStartDate] = useState<string>(defaultStartDate)
   const [returnDuration, setReturnDuration] = useState<string>("4m")
+  const [error, setError] = useState<string | null>(null)
+
+  const queryClient = useQueryClient()
+  const createLoan = useMutation(createLoanMutation(queryClient))
 
   const monthlyInterest = useMemo(() => {
     const principal = Number(amount)
@@ -50,27 +59,36 @@ export default function AddLoanPage() {
     })
   }, [returnDuration, startDate])
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const payload = {
-      borrowerName,
-      phone,
-      relationship,
-      amount: Number(amount) || 0,
-      interestPercent: Number(interestPercent) || 0,
-      monthlyInterest,
-      interestDueDay,
-      startDate,
-      returnDuration,
+    setError(null)
+
+    const payload: CreateLoanInput = {
+      borrower: {
+        name: borrowerName.trim(),
+        phone: phone || undefined,
+        relationship_type: relationship || undefined,
+      },
+      loan: {
+        principal_amount: Number(amount) || 0,
+        interest_percentage: Number(interestPercent) || 0,
+        interest_due_day: interestDueDay,
+        loan_start_date: startDate,
+        return_months: durationToMonths[returnDuration] ?? null,
+      },
     }
 
-    // TODO: Replace with actual action / API call.
-    console.log("Create loan", payload)
+    try {
+      await createLoan.mutateAsync(payload)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create loan"
+      setError(message)
+    }
   }
 
   return (
-    <main className="relative w-full overflow-auto px-4 pb-32 pt-6">
+    <MainLayout>
       <div className="mb-5 flex flex-col gap-1">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
           Add Loan
@@ -80,6 +98,8 @@ export default function AddLoanPage() {
           Clean inputs, clear totals, action anchored at bottom.
         </p>
       </div>
+
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
       <div className="mb-4 rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-4 ring-1 ring-brand-100 shadow-sm">
         <div className="flex items-start justify-between gap-4">
@@ -301,12 +321,13 @@ export default function AddLoanPage() {
           <button
             type="submit"
             form={formId}
-            className="flex h-12 w-full items-center justify-center rounded-xl bg-brand-600 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:ring-offset-2 focus:ring-offset-white"
+            disabled={createLoan.isPending}
+            className="flex h-12 w-full items-center justify-center rounded-xl bg-brand-600 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-70"
           >
-            Create Loan
+            {createLoan.isPending ? "Creating..." : "Create Loan"}
           </button>
         </div>
       </div>
-    </main>
+    </MainLayout>
   )
 }

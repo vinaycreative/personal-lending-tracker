@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useState } from "react"
 import {
@@ -14,6 +14,7 @@ import {
   Smartphone,
   UserRound,
 } from "lucide-react"
+import MainLayout from "@/components/layout/MainLayout"
 
 type ToggleSetting = {
   id: string
@@ -97,13 +98,14 @@ const reminderSettings: ToggleSetting[] = [
   },
 ]
 
-const initialToggleState: Record<string, boolean> = [...preferenceSettings, ...notificationSettings, ...reminderSettings].reduce(
-  (acc, setting) => {
-    acc[setting.id] = setting.defaultOn ?? true
-    return acc
-  },
-  {} as Record<string, boolean>
-)
+const initialToggleState: Record<string, boolean> = [
+  ...preferenceSettings,
+  ...notificationSettings,
+  ...reminderSettings,
+].reduce((acc, setting) => {
+  acc[setting.id] = setting.defaultOn ?? true
+  return acc
+}, {} as Record<string, boolean>)
 
 function ToggleRow({
   setting,
@@ -147,9 +149,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="relative w-full overflow-auto px-4 pb-32 pt-6 space-y-5">
+    <MainLayout>
       <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">Settings</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
+          Settings
+        </p>
         <h1 className="text-2xl font-semibold text-zinc-900">Fine-tune your lending workspace</h1>
         <p className="text-sm text-zinc-600">
           Control reminders, data safety, and the way the app looks on your phone.
@@ -218,7 +222,9 @@ export default function SettingsPage() {
       <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Preferences</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+              Preferences
+            </p>
             <p className="text-sm text-zinc-600">Daily summaries and how information shows up.</p>
           </div>
           <Bell className="h-5 w-5 text-brand-700" />
@@ -239,7 +245,9 @@ export default function SettingsPage() {
         <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Notifications</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                Notifications
+              </p>
               <p className="text-sm text-zinc-600">Control alerts sent to you and borrowers.</p>
             </div>
             <ShieldCheck className="h-5 w-5 text-brand-700" />
@@ -259,7 +267,9 @@ export default function SettingsPage() {
         <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Reminders</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                Reminders
+              </p>
               <p className="text-sm text-zinc-600">Gentle nudges for you to stay on top.</p>
             </div>
             <CalendarClock className="h-5 w-5 text-brand-700" />
@@ -281,7 +291,9 @@ export default function SettingsPage() {
         <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm lg:col-span-2">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Data & safety</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                Data & safety
+              </p>
               <p className="text-sm text-zinc-600">Export snapshots and keep backups handy.</p>
             </div>
             <Database className="h-5 w-5 text-brand-700" />
@@ -297,7 +309,9 @@ export default function SettingsPage() {
             </div>
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <p className="text-sm font-semibold text-zinc-900">Export ledger</p>
-              <p className="text-xs text-zinc-600">Download CSV/PDF for accountants or auditors.</p>
+              <p className="text-xs text-zinc-600">
+                Download CSV/PDF for accountants or auditors.
+              </p>
               <div className="mt-3 flex gap-2">
                 <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50">
                   <FileSpreadsheet className="h-4 w-4" />
@@ -315,7 +329,9 @@ export default function SettingsPage() {
         <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Help</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                Help
+              </p>
               <p className="text-sm text-zinc-600">Get answers or speak with us.</p>
             </div>
             <LifeBuoy className="h-5 w-5 text-brand-700" />
@@ -323,7 +339,9 @@ export default function SettingsPage() {
           <div className="space-y-3">
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
               <p className="text-sm font-semibold text-zinc-900">Support chat</p>
-              <p className="text-xs text-zinc-600">We respond within 15 minutes during business hours.</p>
+              <p className="text-xs text-zinc-600">
+                We respond within 15 minutes during business hours.
+              </p>
               <button className="mt-3 inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800">
                 <MessageSquare className="h-4 w-4" />
                 Start a chat
@@ -331,7 +349,9 @@ export default function SettingsPage() {
             </div>
             <div className="rounded-xl border border-dashed border-brand-200 bg-brand-50 px-4 py-3">
               <p className="text-sm font-semibold text-brand-900">Need a custom export?</p>
-              <p className="text-xs text-brand-800">Share your requirement and we will prepare it.</p>
+              <p className="text-xs text-brand-800">
+                Share your requirement and we will prepare it.
+              </p>
               <button className="mt-3 inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-3 py-2 text-xs font-semibold text-brand-800 shadow-sm transition hover:bg-brand-50">
                 <ChevronRight className="h-4 w-4" />
                 Request support
@@ -340,6 +360,6 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
-    </main>
+    </MainLayout>
   )
 }

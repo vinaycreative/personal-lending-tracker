@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { CheckCircle2, Eye, Filter, Phone, Search } from "lucide-react"
+import MainLayout from "@/components/layout/MainLayout"
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
@@ -163,7 +164,7 @@ export default function LoansPage() {
   ]
 
   return (
-    <main className="relative w-full overflow-auto px-4 pb-32 pt-6 space-y-5">
+    <MainLayout>
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">Loans</p>
         <h1 className="text-2xl font-semibold text-zinc-900">Track every borrower in one place</h1>
@@ -325,6 +326,6 @@ export default function LoansPage() {
           )}
         </div>
       </section>
-    </main>
+    </MainLayout>
   )
 }

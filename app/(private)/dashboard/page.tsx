@@ -1,4 +1,5 @@
 import { AlertTriangle, CalendarClock, Eye, Phone } from "lucide-react"
+import MainLayout from "@/components/layout/MainLayout"
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
@@ -135,7 +136,7 @@ export default function Dashboard() {
   const overdueCount = todaysDue.filter((loan) => loan.status === "overdue").length
 
   return (
-    <main className="w-full relative overflow-auto px-4 pt-4 flex flex-col gap-4">
+    <MainLayout>
       {/* Total Collection */}
       <section className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-6 shadow-sm ring-1 ring-brand-100">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -304,6 +305,6 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
-    </main>
+    </MainLayout>
   )
 }
