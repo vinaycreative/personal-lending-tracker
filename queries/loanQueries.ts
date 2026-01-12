@@ -124,3 +124,30 @@ export function createLoanMutation(
     },
   }
 }
+
+type CollectMonthlyInterestInput = {
+  loanId: string
+  asOf?: string // ISO date-only (YYYY-MM-DD)
+}
+
+async function collectMonthlyInterest({ loanId, asOf }: CollectMonthlyInterestInput) {
+  const { data } = await axios.post(
+    `/api/loans/${loanId}/collect-interest`,
+    asOf ? { as_of: asOf } : {}
+  )
+  return data
+}
+
+export function collectMonthlyInterestMutation(
+  queryClient: QueryClient
+): UseMutationOptions<unknown, unknown, CollectMonthlyInterestInput> {
+  return {
+    mutationKey: ["loans", "collect-monthly-interest"],
+    mutationFn: collectMonthlyInterest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail"] })
+    },
+  }
+}

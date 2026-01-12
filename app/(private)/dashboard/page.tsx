@@ -1,85 +1,21 @@
-import { AlertTriangle, CalendarClock, Eye, Phone } from "lucide-react"
+"use client"
+
+import Link from "next/link"
+import { AlertTriangle, CalendarClock, Phone } from "lucide-react"
 import MainLayout from "@/components/layout/MainLayout"
+import { dashboardQuery } from "@/queries/dashboardQueries"
+import { collectMonthlyInterestMutation } from "@/queries/loanQueries"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import moment from "moment"
+import { useMemo, useState } from "react"
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
-type Loan = {
-  id: number
-  borrower: string
-  principal: number
-  monthlyInterest: number
-  dueDate: string
-  status: PaymentStatus
+function formatDisplayDate(dateIso: string) {
+  const m = moment.utc(dateIso, "YYYY-MM-DD", true)
+  if (!m.isValid()) return dateIso
+  return m.format("MMM DD, YYYY")
 }
-
-const today = "Jan 11, 2026"
-
-const loans: Loan[] = [
-  {
-    id: 1,
-    borrower: "Asha Traders",
-    principal: 120000,
-    monthlyInterest: 1800,
-    dueDate: today,
-    status: "due",
-  },
-  {
-    id: 2,
-    borrower: "Ravi Metals",
-    principal: 85000,
-    monthlyInterest: 1275,
-    dueDate: today,
-    status: "due",
-  },
-  {
-    id: 3,
-    borrower: "Sharma Transports",
-    principal: 150000,
-    monthlyInterest: 2400,
-    dueDate: "Jan 09, 2026",
-    status: "overdue",
-  },
-  {
-    id: 4,
-    borrower: "Meena Kirana",
-    principal: 42000,
-    monthlyInterest: 546,
-    dueDate: "Jan 13, 2026",
-    status: "due",
-  },
-  {
-    id: 8,
-    borrower: "Lal Farms",
-    principal: 69000,
-    monthlyInterest: 900,
-    dueDate: "Jan 07, 2026",
-    status: "overdue",
-  },
-  {
-    id: 5,
-    borrower: "Sharma Transports",
-    principal: 150000,
-    monthlyInterest: 2400,
-    dueDate: "Jan 09, 2026",
-    status: "overdue",
-  },
-  {
-    id: 6,
-    borrower: "Meena Kirana",
-    principal: 42000,
-    monthlyInterest: 546,
-    dueDate: "Jan 13, 2026",
-    status: "due",
-  },
-  {
-    id: 7,
-    borrower: "Lal Farms",
-    principal: 69000,
-    monthlyInterest: 900,
-    dueDate: "Jan 07, 2026",
-    status: "overdue",
-  },
-]
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -110,33 +46,126 @@ function StatusBadge({ status }: { status: PaymentStatus }) {
 }
 
 export default function Dashboard() {
-  const totals = loans.reduce(
-    (acc, loan) => {
-      acc.principal += loan.principal
-      acc.monthlyInterest += loan.monthlyInterest
-      return acc
+  const queryClient = useQueryClient()
+  const { data, isLoading, isError } = useQuery(dashboardQuery())
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null)
+  const [selectedBorrowerName, setSelectedBorrowerName] = useState<string | null>(null)
+
+  const baseCollectOptions = useMemo(
+    () => collectMonthlyInterestMutation(queryClient),
+    [queryClient]
+  )
+  const collectMutation = useMutation({
+    ...baseCollectOptions,
+    onSuccess: (...args) => {
+      baseCollectOptions.onSuccess?.(...args)
+      setConfirmOpen(false)
+      setSelectedLoanId(null)
+      setSelectedBorrowerName(null)
     },
-    { principal: 0, monthlyInterest: 0 }
-  )
+  })
 
-  const todaysDue = loans.filter(
-    (loan) => loan.status !== "paid" && (loan.dueDate === today || loan.status === "overdue")
-  )
+  const asOfDateIso = data?.as_of_date ?? new Date().toISOString().slice(0, 10)
+  const todayDisplay = formatDisplayDate(asOfDateIso)
 
-  const interestDueToday = todaysDue
-    .filter((loan) => loan.dueDate === today)
-    .reduce((sum, loan) => sum + loan.monthlyInterest, 0)
+  const totals = {
+    principal: data?.totals.total_principal ?? 0,
+    monthlyInterest: data?.totals.total_monthly_interest ?? 0,
+  }
 
-  const overdueInterest = todaysDue
-    .filter((loan) => loan.status === "overdue")
-    .reduce((sum, loan) => sum + loan.monthlyInterest, 0)
+  const needToCollect = data?.collection_focus.need_to_collect ?? 0
+  const interestDueToday = data?.collection_focus.interest_due_today ?? 0
+  const overdueInterest = data?.collection_focus.overdue_interest ?? 0
+  const dueTodayCount = data?.collection_focus.due_today_count ?? 0
+  const overdueCount = data?.collection_focus.overdue_count ?? 0
 
-  const needToCollect = interestDueToday + overdueInterest
-  const dueTodayCount = todaysDue.filter((loan) => loan.dueDate === today).length
-  const overdueCount = todaysDue.filter((loan) => loan.status === "overdue").length
+  const todaysDue =
+    data?.todays_due.map((loan) => ({
+      id: loan.id,
+      borrower: loan.borrower_name,
+      borrowerPhone: loan.borrower_phone,
+      principal: loan.principal_amount,
+      monthlyInterest: loan.monthly_interest_amount,
+      dueDate: formatDisplayDate(loan.next_due_date),
+      dueDateIso: loan.next_due_date,
+      status: loan.payment_status as PaymentStatus,
+    })) ?? []
 
   return (
     <MainLayout>
+      {confirmOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="collect-dialog-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl ring-1 ring-zinc-200">
+            <div className="border-b border-zinc-200 px-5 py-4">
+              <p id="collect-dialog-title" className="text-sm font-semibold text-zinc-900">
+                Confirm collection
+              </p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Mark interest as collected for{" "}
+                <span className="font-semibold text-zinc-900">
+                  {selectedBorrowerName ?? "this borrower"}
+                </span>
+                ?
+              </p>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                This will update the due record and schedule the next month payment.
+              </div>
+              {collectMutation.isError ? (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  Failed to update. Please try again.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-zinc-200 px-5 py-4">
+              <button
+                onClick={() => {
+                  if (collectMutation.isPending) return
+                  setConfirmOpen(false)
+                  setSelectedLoanId(null)
+                  setSelectedBorrowerName(null)
+                }}
+                disabled={collectMutation.isPending}
+                className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (!selectedLoanId) return
+                  collectMutation.mutate({ loanId: selectedLoanId, asOf: asOfDateIso })
+                }}
+                disabled={!selectedLoanId || collectMutation.isPending}
+                className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {collectMutation.isPending ? "Updating…" : "Yes, mark collected"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isLoading ? (
+        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+          <p className="text-sm font-medium text-zinc-900">Loading dashboard…</p>
+          <p className="text-xs text-zinc-600">Fetching latest loans and due amounts.</p>
+        </div>
+      ) : isError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-sm">
+          <p className="text-sm font-semibold text-red-800">Couldn’t load dashboard</p>
+          <p className="text-xs text-red-700">Please refresh and try again.</p>
+        </div>
+      ) : null}
+
       {/* Total Collection */}
       <section className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-6 shadow-sm ring-1 ring-brand-100">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -171,7 +200,7 @@ export default function Dashboard() {
               <p className="mt-1 text-xl font-semibold text-zinc-900">
                 {currency.format(interestDueToday)}
               </p>
-              <p className="text-xs text-zinc-600">Interest expected by {today}</p>
+              <p className="text-xs text-zinc-600">Interest expected by {todayDisplay}</p>
             </div>
             <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-inner">
               <div className="flex items-center justify-between">
@@ -212,7 +241,7 @@ export default function Dashboard() {
           <div>
             <div className="flex items-center justify-between gap-3 mb-1">
               <h2 className="text-base font-semibold text-zinc-900">
-                Today&apos;s Due - <span className="text-xs text-zinc-600">{today}</span>
+                Today&apos;s Due - <span className="text-xs text-zinc-600">{todayDisplay}</span>
               </h2>
               <span className="rounded-full bg-zinc-100 px-3 py-0.5 text-xs font-medium text-zinc-700 border border-zinc-200">
                 {todaysDue.length} borrowers
@@ -291,13 +320,38 @@ export default function Dashboard() {
               </div>
 
               <div className="flex flex-row gap-2">
-                <button className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800">
-                  <Phone size={14} /> Call
-                </button>
-                <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50">
+                {loan.borrowerPhone ? (
+                  <a
+                    href={`tel:${loan.borrowerPhone}`}
+                    className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800"
+                  >
+                    <Phone size={14} /> Call
+                  </a>
+                ) : (
+                  <button
+                    disabled
+                    className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-zinc-300 px-3 py-2 text-xs font-semibold text-white shadow-sm"
+                  >
+                    <Phone size={14} /> No phone
+                  </button>
+                )}
+
+                <Link
+                  href={`/loans/${loan.id}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50"
+                >
                   View details
-                </button>
-                <button className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50">
+                </Link>
+
+                <button
+                  onClick={() => {
+                    setSelectedLoanId(loan.id)
+                    setSelectedBorrowerName(loan.borrower)
+                    setConfirmOpen(true)
+                  }}
+                  disabled={collectMutation.isPending}
+                  className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
                   Mark collected
                 </button>
               </div>

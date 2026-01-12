@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client"
+import moment from "moment"
 
 type CreateLoanRequest = {
   borrower: {
@@ -18,21 +19,16 @@ type CreateLoanRequest = {
 }
 
 function currentMonthYear(now = new Date()) {
-  const yyyy = now.getFullYear()
-  const mm = String(now.getMonth() + 1).padStart(2, "0")
-  return `${yyyy}-${mm}`
+  return moment.utc(now).format("YYYY-MM")
 }
 
 function parseIsoDateOnly(dateIso: string) {
-  // Expect YYYY-MM-DD (Supabase date columns are typically returned in this form)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null
-  const date = new Date(`${dateIso}T00:00:00Z`)
-  if (Number.isNaN(date.getTime())) return null
-  return date
+  const m = moment.utc(dateIso, "YYYY-MM-DD", true)
+  return m.isValid() ? m.toDate() : null
 }
 
 function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10)
+  return moment.utc(date).format("YYYY-MM-DD")
 }
 
 function clampDueDay(day: number) {
@@ -40,13 +36,32 @@ function clampDueDay(day: number) {
   return Math.min(30, Math.max(1, Math.trunc(day)))
 }
 
-function buildDueDateIso(dueDay: number, now = new Date()) {
+function buildDueDateIsoForYearMonth(dueDay: number, year: number, monthIndexZeroBased: number) {
   const safeDay = clampDueDay(dueDay)
-  const year = now.getFullYear()
-  const month = now.getMonth()
-  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const daysInMonth = moment.utc({ year, month: monthIndexZeroBased, day: 1 }).daysInMonth()
   const day = Math.min(safeDay, daysInMonth)
-  return toIsoDate(new Date(Date.UTC(year, month, day)))
+  return moment.utc({ year, month: monthIndexZeroBased, day }).format("YYYY-MM-DD")
+}
+
+function buildDueDateIsoForMonth(dueDay: number, monthRefUtc: Date) {
+  return buildDueDateIsoForYearMonth(dueDay, monthRefUtc.getUTCFullYear(), monthRefUtc.getUTCMonth())
+}
+
+function fallbackDueDateIso(loanStartDateIso: string | null | undefined, dueDay: number, asOfUtc: Date) {
+  const start = loanStartDateIso ? parseIsoDateOnly(loanStartDateIso) : null
+  if (!start) return buildDueDateIsoForMonth(dueDay, asOfUtc)
+
+  const startIso = toIsoDate(start)
+  const startMonthYear = startIso.slice(0, 7)
+  const asOfMonthYear = currentMonthYear(asOfUtc)
+
+  // First interest is due *next month* after loan start.
+  if (startMonthYear === asOfMonthYear) {
+    const nextMonth = moment.utc(asOfUtc).add(1, "month")
+    return buildDueDateIsoForYearMonth(dueDay, nextMonth.year(), nextMonth.month())
+  }
+
+  return buildDueDateIsoForMonth(dueDay, asOfUtc)
 }
 
 function buildNextMonthInterestSchedule(startDateIso: string, dueDay: number) {
@@ -72,15 +87,17 @@ function buildNextMonthInterestSchedule(startDateIso: string, dueDay: number) {
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
-function computePaymentStatus(dueDateIso: string, isPaid: boolean) {
+function computePaymentStatus(dueDateIso: string, isPaid: boolean, asOfDateIso: string) {
   if (isPaid) return "paid" as const
-
-  const due = new Date(`${dueDateIso}T00:00:00Z`).getTime()
-  const now = Date.now()
-  return now > due ? ("overdue" as const) : ("due" as const)
+  return moment.utc(asOfDateIso, "YYYY-MM-DD").isAfter(moment.utc(dueDateIso, "YYYY-MM-DD"), "day")
+    ? ("overdue" as const)
+    : ("due" as const)
 }
 
 export async function GET() {
+  const asOfUtc = new Date()
+  const asOfDateIso = toIsoDate(asOfUtc)
+
   const { data: loans, error } = await supabase
     .from("loans")
     .select(
@@ -108,23 +125,27 @@ export async function GET() {
   }
 
   const loanIds = (loans ?? []).map((l) => l.id)
-  const monthYear = currentMonthYear()
-
-  const { data: monthPayments, error: monthPaymentsError } = loanIds.length
+  // NOTE: We derive `next_due_date` from `monthly_interest_payments.due_date` so due_date edits reflect immediately.
+  const { data: allPayments, error: paymentsError } = loanIds.length
     ? await supabase
         .from("monthly_interest_payments")
-        .select("loan_id, due_date, status, paid_at, month_year")
+        .select("loan_id, due_date, status, paid_at")
         .in("loan_id", loanIds)
-        .eq("month_year", monthYear)
+        .order("due_date", { ascending: true })
+        .limit(10000)
     : { data: [], error: null }
 
-  if (monthPaymentsError) {
-    return Response.json({ error: monthPaymentsError.message }, { status: 500 })
+  if (paymentsError) {
+    return Response.json({ error: paymentsError.message }, { status: 500 })
   }
 
-  const monthPaymentByLoanId = new Map(
-    (monthPayments ?? []).map((p) => [p.loan_id, p] as const)
-  )
+  // Pick the earliest unpaid payment per loan as "next due".
+  const nextUnpaidByLoanId = new Map<string, { due_date: string; status: string | null; paid_at: string | null }>()
+  for (const row of allPayments ?? []) {
+    const isPaid = row.status === "paid" || Boolean(row.paid_at)
+    if (isPaid) continue
+    if (!nextUnpaidByLoanId.has(row.loan_id)) nextUnpaidByLoanId.set(row.loan_id, row)
+  }
 
   const { data: paidPayments, error: paidPaymentsError } = loanIds.length
     ? await supabase
@@ -152,10 +173,10 @@ export async function GET() {
       | null
       | undefined
 
-    const mp = monthPaymentByLoanId.get(loan.id)
-    const dueDateIso = mp?.due_date ?? buildDueDateIso(loan.interest_due_day)
-    const isPaid = mp?.status === "paid" || Boolean(mp?.paid_at) || loan.status === "closed"
-    const payment_status = computePaymentStatus(dueDateIso, isPaid)
+    const mp = nextUnpaidByLoanId.get(String(loan.id))
+    const dueDateIso = mp?.due_date ?? fallbackDueDateIso(loan.loan_start_date, loan.interest_due_day, asOfUtc)
+    const isPaid = Boolean(mp) ? false : loan.status === "closed"
+    const payment_status = computePaymentStatus(dueDateIso, isPaid, asOfDateIso)
 
     const lastPaidAt = lastPaidAtByLoanId.get(loan.id) ?? null
 
