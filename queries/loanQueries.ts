@@ -79,6 +79,7 @@ export type LoanDetailResponse = {
     notes: string | null
     created_at: string | null
   } | null
+  interest_paid_total: number
   monthly_interest_payments: {
     id: string
     loan_id: string

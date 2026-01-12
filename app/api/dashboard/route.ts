@@ -115,7 +115,7 @@ export async function GET(request: Request) {
   const { data: paymentsDueByAsOf, error: paymentsError } = loanIds.length
     ? await supabase
         .from("monthly_interest_payments")
-        .select("loan_id, due_date, status, paid_at")
+        .select("loan_id, due_date, status, paid_at, amount")
         .in("loan_id", loanIds)
         .lte("due_date", asOfDateIso)
         .order("due_date", { ascending: true })
@@ -129,13 +129,15 @@ export async function GET(request: Request) {
   // Pick the earliest unpaid payment per loan (most overdue / due today).
   const unpaidDueByLoanId = new Map<
     string,
-    { due_date: string; status: string | null; paid_at: string | null }
+    { due_date: string; status: string | null; paid_at: string | null; amount: number | null }
   >()
   for (const row of paymentsDueByAsOf ?? []) {
     const isPaid = row.status === "paid" || Boolean(row.paid_at)
     if (isPaid) continue
     if (!unpaidDueByLoanId.has(row.loan_id)) unpaidDueByLoanId.set(row.loan_id, row)
   }
+
+  const loanById = new Map((loans ?? []).map((l) => [String(l.id), l] as const))
 
   const normalizedLoans = (loans ?? []).map((loan) => {
     const borrower = (loan as any).borrowers as
@@ -174,14 +176,40 @@ export async function GET(request: Request) {
     { total_principal: 0, total_monthly_interest: 0 }
   )
 
-  // Use only loans that have an actual unpaid payment due <= asOf (or an exact due today),
-  // so we don't show "synthetic" fallback due dates in Today's Due.
-  const todaysDue = normalizedLoans.filter((loan) => {
-    if (loan.loan_status === "closed") return false
-    const hasUnpaidDueRow = unpaidDueByLoanId.has(loan.id)
-    if (hasUnpaidDueRow) return true
-    return loan.next_due_date === asOfDateIso
-  })
+  // IMPORTANT: "Today's Due" should be driven ONLY by unpaid rows in `monthly_interest_payments`.
+  // This prevents already-paid items from showing due to fallback `loan_start_date` logic.
+  const todaysDue = Array.from(unpaidDueByLoanId.entries())
+    .map(([loanId, payment]) => {
+      const loan = loanById.get(loanId)
+      if (!loan) return null
+      if (String((loan as any).status ?? "") === "closed") return null
+
+      const borrower = (loan as any).borrowers as
+        | { id: string; name: string; phone: string | null; relationship_type: string | null }
+        | null
+        | undefined
+
+      const dueDateIso = payment.due_date
+      const payment_status: PaymentStatus = moment
+        .utc(asOfDateIso, "YYYY-MM-DD")
+        .isAfter(moment.utc(dueDateIso, "YYYY-MM-DD"), "day")
+        ? "overdue"
+        : "due"
+
+      return {
+        id: String(loan.id),
+        borrower_id: String(loan.borrower_id),
+        borrower_name: borrower?.name ?? "Unknown",
+        borrower_phone: borrower?.phone ?? null,
+        relationship_type: borrower?.relationship_type ?? null,
+        principal_amount: Number(loan.principal_amount) || 0,
+        monthly_interest_amount: Number(payment.amount ?? loan.monthly_interest_amount) || 0,
+        loan_status: String((loan as any).status ?? ""),
+        next_due_date: dueDateIso,
+        payment_status,
+      }
+    })
+    .filter(Boolean) as typeof normalizedLoans
 
   const interestDueToday = todaysDue
     .filter((loan) => loan.next_due_date === asOfDateIso)

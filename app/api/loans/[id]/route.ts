@@ -54,6 +54,25 @@ export async function GET(_request: Request, context: { params: Params | Promise
     return Response.json({ error: interestError.message }, { status: 500 })
   }
 
+  // Total interest collected so far (not limited to the 24 rows used for UI history).
+  const { data: paidInterestRows, error: paidInterestError } = await supabase
+    .from("monthly_interest_payments")
+    .select("amount, status, paid_at")
+    .eq("loan_id", loanId)
+    .or("status.eq.paid,paid_at.not.is.null")
+    .limit(5000)
+
+  if (paidInterestError) {
+    return Response.json({ error: paidInterestError.message }, { status: 500 })
+  }
+
+  const interest_paid_total = Number(
+    (paidInterestRows ?? []).reduce((sum, row) => {
+      const amount = Number((row as any).amount)
+      return Number.isFinite(amount) ? sum + amount : sum
+    }, 0)
+  )
+
   const { data: principalPayments, error: principalError } = await supabase
     .from("principal_payments")
     .select("id, loan_id, amount, paid_at, notes, created_at")
@@ -83,6 +102,7 @@ export async function GET(_request: Request, context: { params: Params | Promise
         created_at: loan.created_at ?? null,
       },
       borrower,
+      interest_paid_total,
       monthly_interest_payments: interestPayments ?? [],
       principal_payments: principalPayments ?? [],
     },

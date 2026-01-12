@@ -239,7 +239,7 @@ export default function LoansPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-zinc-900">{loan.borrower}</p>
+                  <p className="text-sm font-semibold text-zinc-900 capitalize">{loan.borrower}</p>
                   <p className="text-xs text-zinc-600">
                     {loan.relationship} • Started {loan.startDate}
                   </p>
@@ -283,7 +283,7 @@ export default function LoansPage() {
                   <button
                     type="button"
                     onClick={() => router.push(`/loans/${loan.id}`)}
-                    className="rounded-md border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800"
+                    className="rounded-md border border-zinc-200 bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 flex items-center gap-2"
                   >
                     <Eye size={14} /> View Profile
                   </button>

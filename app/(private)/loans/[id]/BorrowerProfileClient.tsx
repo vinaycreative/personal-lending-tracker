@@ -128,8 +128,8 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
       detailQuery.error instanceof AxiosError
         ? (detailQuery.error.response?.data as any)?.error || detailQuery.error.message
         : detailQuery.error instanceof Error
-          ? detailQuery.error.message
-          : "Failed to load loan"
+        ? detailQuery.error.message
+        : "Failed to load loan"
     return (
       <MainLayout>
         <section className="rounded-2xl border border-red-200 bg-red-50 p-4 shadow-sm">
@@ -143,7 +143,12 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
     )
   }
 
-  const { loan: loanRow, borrower, monthly_interest_payments: interestPayments } = detailQuery.data
+  const {
+    loan: loanRow,
+    borrower,
+    monthly_interest_payments: interestPayments,
+    interest_paid_total: interestPaidTotal,
+  } = detailQuery.data
 
   const latestInterest = interestPayments[0]
   const dueDateIso = latestInterest?.due_date ?? buildDueDateIso(loanRow.interest_due_day)
@@ -217,8 +222,8 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-700">
               Borrower
             </p>
-            <h1 className="text-2xl font-semibold text-zinc-900">{profile.name}</h1>
-            <p className="text-sm text-zinc-600">
+            <h1 className="text-2xl font-semibold text-zinc-900 capitalize">{profile.name}</h1>
+            <p className="text-sm text-zinc-600 capitalize">
               {profile.relationship} • {profile.location}
             </p>
             <p className="text-xs text-zinc-500">{profile.notes}</p>
@@ -244,15 +249,23 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl col-span-2 border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-zinc-500">Principal Lent</p>
-          <p className="text-2xl font-semibold text-zinc-900">{currency.format(totals.principal)}</p>
-        </div>
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-zinc-500">Monthly Interest</p>
+          <p className="text-xs text-zinc-500">Principal Lent</p>
+          <p className="text-2xl font-semibold text-zinc-900">
+            {currency.format(totals.principal)}
+          </p>
+        </div>
+        <div className="rounded-2xl border = bg-orange-50 border-orange-200 p-4 shadow-sm">
+          <p className="text-xs text-orange-700">Monthly Interest</p>
           <p className="text-xl font-semibold text-zinc-900">
             {currency.format(totals.monthlyInterest)}
+          </p>
+        </div>
+        <div className="rounded-2xl border bg-blue-50 border-blue-200 p-4 shadow-sm">
+          <p className="text-xs text-blue-700">Total Interest Paid</p>
+          <p className="text-xl font-semibold text-zinc-900">
+            {currency.format(Number.isFinite(interestPaidTotal) ? interestPaidTotal : 0)}
           </p>
         </div>
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -266,7 +279,9 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
       <section className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">Loans</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+              Loans
+            </p>
             <p className="text-sm text-zinc-700">All active and closed loans for this borrower.</p>
           </div>
           <span className="rounded-full inline-block bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700 border border-zinc-200">
@@ -289,13 +304,15 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
                     Started {loan.startDate} • Due every {loan.interestDueDay}th
                   </p>
                 </div>
-                <StatusBadge status={loan.status} />
+                {/* <StatusBadge status={loan.status} /> */}
               </div>
 
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
                   <p className="text-[11px] uppercase tracking-wide text-zinc-500">Monthly</p>
-                  <p className="font-semibold text-zinc-900">{currency.format(loan.monthlyInterest)}</p>
+                  <p className="font-semibold text-zinc-900">
+                    {currency.format(loan.monthlyInterest)}
+                  </p>
                 </div>
                 <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
                   <p className="text-[11px] uppercase tracking-wide text-zinc-500">Next Due</p>
@@ -362,4 +379,3 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
     </MainLayout>
   )
 }
-
