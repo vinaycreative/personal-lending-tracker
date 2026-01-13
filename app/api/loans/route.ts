@@ -218,6 +218,29 @@ export async function GET() {
     if (!lastPaidAtByLoanId.has(row.loan_id)) lastPaidAtByLoanId.set(row.loan_id, row.paid_at)
   }
 
+  const { data: principalRows, error: principalError } = loanIds.length
+    ? await supabase
+        .from("principal_payments")
+        .select("loan_id, amount, notes")
+        .in("loan_id", loanIds)
+        .limit(20000)
+    : { data: [], error: null }
+
+  if (principalError) {
+    return Response.json({ error: principalError.message }, { status: 500 })
+  }
+
+  const principalPaidByLoanId = new Map<string, number>()
+  for (const row of principalRows ?? []) {
+    const amount = Number(row.amount) || 0
+    if (amount <= 0) continue
+    const notes = typeof row.notes === "string" ? row.notes : ""
+    const isTopUp = notes.toLowerCase().startsWith("top-up")
+    if (isTopUp) continue
+    const id = String(row.loan_id)
+    principalPaidByLoanId.set(id, (principalPaidByLoanId.get(id) ?? 0) + amount)
+  }
+
   const loanRows = (loans ?? []) as unknown as LoanRow[]
 
   const responseLoans = loanRows.map((loan) => {
@@ -228,6 +251,9 @@ export async function GET() {
     const payment_status = computePaymentStatus(dueDateIso, isPaid, asOfDateIso)
 
     const lastPaidAt = lastPaidAtByLoanId.get(String(loan.id)) ?? null
+    const principal = Number(loan.principal_amount) || 0
+    const principalPaid = principalPaidByLoanId.get(String(loan.id)) ?? 0
+    const principalCurrent = principal - principalPaid
 
     return {
       id: String(loan.id),
@@ -235,7 +261,8 @@ export async function GET() {
       borrower_name: borrower?.name ?? "Unknown",
       borrower_phone: borrower?.phone ?? null,
       relationship_type: borrower?.relationship_type ?? null,
-      principal_amount: Number(loan.principal_amount) || 0,
+      principal_amount: principal,
+      principal_current: principalCurrent,
       monthly_interest_amount: Number(loan.monthly_interest_amount) || 0,
       interest_due_day: Number(loan.interest_due_day) || 1,
       loan_start_date: loan.loan_start_date,

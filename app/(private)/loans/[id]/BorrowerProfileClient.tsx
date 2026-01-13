@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock4,
+  HandCoins,
   MessageCircle,
   Pencil,
   Phone,
@@ -17,7 +18,14 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import MainLayout from "@/components/layout/MainLayout"
-import { loanDetailQuery, updateLoanMutation, type PaymentStatus } from "@/queries/loanQueries"
+import {
+  deleteTopUpMutation,
+  loanDetailQuery,
+  topUpLoanMutation,
+  updateTopUpMutation,
+  updateLoanMutation,
+  type PaymentStatus,
+} from "@/queries/loanQueries"
 import { AxiosError } from "axios"
 import { toast } from "sonner"
 import { FullScreenLoader } from "@/components/ui/full-screen-loader"
@@ -96,7 +104,8 @@ const dateFormatter = new Intl.DateTimeFormat("en-IN", {
 })
 
 function formatIsoDate(iso: string) {
-  const date = new Date(`${iso}T00:00:00Z`)
+  // Accept both YYYY-MM-DD and full ISO timestamps.
+  const date = iso.includes("T") ? new Date(iso) : new Date(`${iso}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return iso
   return dateFormatter.format(date)
 }
@@ -151,9 +160,20 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
   const detailQuery = useQuery(loanDetailQuery(loanId))
 
   const updateLoan = useMutation(updateLoanMutation(queryClient))
+  const topUpLoan = useMutation(topUpLoanMutation(queryClient))
+  const updateTopUp = useMutation(updateTopUpMutation(queryClient))
+  const deleteTopUp = useMutation(deleteTopUpMutation(queryClient))
   const deleteBorrower = useMutation(deleteBorrowerMutation(queryClient))
 
   const [isEditing, setIsEditing] = useState(false)
+  const [topUpOpen, setTopUpOpen] = useState(false)
+  const [topUpAmount, setTopUpAmount] = useState("")
+  const [topUpDate, setTopUpDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [topUpNote, setTopUpNote] = useState("")
+  const [editTopUpId, setEditTopUpId] = useState<string | null>(null)
+  const [editTopUpAmount, setEditTopUpAmount] = useState("")
+  const [editTopUpDate, setEditTopUpDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [editTopUpNote, setEditTopUpNote] = useState("")
   type EditDraft = {
     borrowerName: string
     borrowerPhone: string
@@ -197,6 +217,7 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
     borrower,
     monthly_interest_payments: interestPayments,
     interest_paid_total: interestPaidTotal,
+    principal_payments: principalPayments,
   } = detailQuery.data
 
   const latestInterest = interestPayments[0]
@@ -218,7 +239,7 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
       {
         id: loanRow.id,
         borrower: borrower?.name ?? "Borrower",
-        principal: loanRow.principal_amount,
+        principal: loanRow.principal_current ?? loanRow.principal_amount,
         monthlyInterest: loanRow.monthly_interest_amount,
         nextDue: formatIsoDate(dueDateIso),
         status: paymentStatus,
@@ -250,6 +271,16 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
     },
     { principal: 0, monthlyInterest: 0, nextDue: "", activeStatuses: [] as PaymentStatus[] }
   )
+
+  const topUps = (principalPayments ?? [])
+    .filter((p) => (p.notes ?? "").toLowerCase().startsWith("top-up"))
+    .map((p) => ({
+      id: p.id,
+      date: p.paid_at ? formatIsoDate(p.paid_at) : "—",
+      dateIso: p.paid_at ? String(p.paid_at).slice(0, 10) : "",
+      amount: Math.abs(Number(p.amount) || 0),
+      notes: p.notes ?? "Top-up",
+    }))
 
   return (
     <MainLayout>
@@ -448,6 +479,274 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
           </div>
         </div>
       </header>
+
+      <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+              Top-ups
+            </p>
+            <p className="text-xs text-zinc-600">
+              Add more principal for the same borrower and auto-update monthly interest.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTopUpOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-700"
+          >
+            <HandCoins className="h-4 w-4" />
+            Top up
+          </button>
+        </div>
+
+        {topUps.length ? (
+          <div className="space-y-2">
+            {topUps.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-start justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-zinc-900">
+                    {currency.format(t.amount)}
+                  </p>
+                  <p className="text-[11px] text-zinc-600">{t.date}</p>
+                  <p className="text-[11px] text-zinc-500 line-clamp-2">{t.notes}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditTopUpId(t.id)
+                      setEditTopUpAmount(String(t.amount))
+                      setEditTopUpDate(t.dateIso || new Date().toISOString().slice(0, 10))
+                      setEditTopUpNote(t.notes.replace(/^Top-up:\s*/i, ""))
+                    }}
+                    className="inline-flex items-center justify-center rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50"
+                    aria-label="Edit top-up"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-2.5 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-50"
+                        aria-label="Delete top-up"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete top-up?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will remove the top-up record and reduce the loan principal
+                          accordingly.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={async () => {
+                            try {
+                              await deleteTopUp.mutateAsync({ paymentId: t.id, loanId })
+                              toast.success("Top-up deleted")
+                            } catch (e) {
+                              const msg =
+                                e instanceof Error ? e.message : "Failed to delete top-up"
+                              toast.error(msg)
+                            }
+                          }}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50 p-3 text-center">
+            <p className="text-xs font-medium text-zinc-700">No top-ups yet</p>
+            <p className="text-[11px] text-zinc-500">
+              Use “Top up” when the borrower takes more money.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <Dialog open={topUpOpen} onOpenChange={setTopUpOpen}>
+        <DialogContent className="p-0 overflow-hidden">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-zinc-200">
+            <DialogTitle>Top up this loan</DialogTitle>
+            <DialogDescription>
+              Records a new borrow entry and updates monthly interest based on the combined
+              principal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-5 py-5 space-y-4">
+            <label className="space-y-2 block">
+              <span className="text-sm font-medium text-zinc-900">Amount</span>
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={topUpAmount}
+                onChange={(e) => setTopUpAmount(e.target.value.replace(/\D/g, ""))}
+                placeholder="e.g. 20000"
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </label>
+
+            <label className="space-y-2 block">
+              <span className="text-sm font-medium text-zinc-900">Date</span>
+              <input
+                type="date"
+                value={topUpDate}
+                onChange={(e) => setTopUpDate(e.target.value)}
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </label>
+
+            <label className="space-y-2 block">
+              <span className="text-sm font-medium text-zinc-900">Note (optional)</span>
+              <input
+                value={topUpNote}
+                onChange={(e) => setTopUpNote(e.target.value)}
+                placeholder="e.g. Second borrow"
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTopUpOpen(false)}
+                disabled={topUpLoan.isPending}
+                className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={topUpLoan.isPending || !topUpAmount || !topUpDate}
+                onClick={async () => {
+                  try {
+                    const amount = Number(topUpAmount)
+                    await topUpLoan.mutateAsync({
+                      loanId,
+                      amount,
+                      date: topUpDate,
+                      notes: topUpNote,
+                    })
+                    toast.success("Top-up recorded")
+                    setTopUpOpen(false)
+                    setTopUpAmount("")
+                    setTopUpNote("")
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : "Failed to record top-up"
+                    toast.error(msg)
+                  }
+                }}
+                className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {topUpLoan.isPending ? "Saving…" : "Save top-up"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editTopUpId)}
+        onOpenChange={(open) => {
+          if (open) return
+          setEditTopUpId(null)
+        }}
+      >
+        <DialogContent className="p-0 overflow-hidden">
+          <DialogHeader className="px-5 pt-5 pb-3 border-b border-zinc-200">
+            <DialogTitle>Edit top-up</DialogTitle>
+            <DialogDescription>
+              Update amount, date, or note for this borrow entry.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-5 py-5 space-y-4">
+            <label className="space-y-2 block">
+              <span className="text-sm font-medium text-zinc-900">Amount</span>
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={editTopUpAmount}
+                onChange={(e) => setEditTopUpAmount(e.target.value.replace(/\D/g, ""))}
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </label>
+
+            <label className="space-y-2 block">
+              <span className="text-sm font-medium text-zinc-900">Date</span>
+              <input
+                type="date"
+                value={editTopUpDate}
+                onChange={(e) => setEditTopUpDate(e.target.value)}
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </label>
+
+            <label className="space-y-2 block">
+              <span className="text-sm font-medium text-zinc-900">Note (optional)</span>
+              <input
+                value={editTopUpNote}
+                onChange={(e) => setEditTopUpNote(e.target.value)}
+                className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              />
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEditTopUpId(null)}
+                disabled={updateTopUp.isPending}
+                className="inline-flex items-center rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  updateTopUp.isPending || !editTopUpId || !editTopUpAmount || !editTopUpDate
+                }
+                onClick={async () => {
+                  if (!editTopUpId) return
+                  try {
+                    await updateTopUp.mutateAsync({
+                      paymentId: editTopUpId,
+                      loanId,
+                      amount: Number(editTopUpAmount),
+                      date: editTopUpDate,
+                      notes: editTopUpNote,
+                    })
+                    toast.success("Top-up updated")
+                    setEditTopUpId(null)
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : "Failed to update top-up"
+                    toast.error(msg)
+                  }
+                }}
+                className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {updateTopUp.isPending ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(isEditing && draft)}

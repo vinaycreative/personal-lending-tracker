@@ -108,7 +108,7 @@ export async function GET(_request: Request, context: { params: Params | Promise
     .select("id, loan_id, month_year, due_date, amount, status, paid_at, created_at")
     .eq("loan_id", loanId)
     .order("due_date", { ascending: false })
-    .limit(24)
+    .limit(60)
 
   if (interestError) {
     return Response.json({ error: interestError.message }, { status: 500 })
@@ -138,11 +138,30 @@ export async function GET(_request: Request, context: { params: Params | Promise
     .select("id, loan_id, amount, paid_at, notes, created_at")
     .eq("loan_id", loanId)
     .order("paid_at", { ascending: false })
-    .limit(24)
+    .limit(200)
 
   if (principalError) {
     return Response.json({ error: principalError.message }, { status: 500 })
   }
+
+  const { data: principalPaidRows, error: principalPaidError } = await supabase
+    .from("principal_payments")
+    .select("amount, notes")
+    .eq("loan_id", loanId)
+    .gt("amount", 0)
+    .limit(20000)
+
+  if (principalPaidError) {
+    return Response.json({ error: principalPaidError.message }, { status: 500 })
+  }
+
+  const principalPaid = (principalPaidRows ?? []).reduce((sum, row) => {
+    const notes = typeof row.notes === "string" ? row.notes : ""
+    const isTopUp = notes.toLowerCase().startsWith("top-up")
+    if (isTopUp) return sum
+    return sum + (Number(row.amount) || 0)
+  }, 0)
+  const principal_current = (Number((loan as unknown as LoanRow).principal_amount) || 0) - principalPaid
 
   const borrower = getBorrower(loan as unknown as LoanRow)
 
@@ -152,6 +171,7 @@ export async function GET(_request: Request, context: { params: Params | Promise
         id: loan.id,
         borrower_id: loan.borrower_id,
         principal_amount: loan.principal_amount,
+        principal_current,
         interest_percentage: loan.interest_percentage,
         monthly_interest_amount: loan.monthly_interest_amount,
         interest_due_day: loan.interest_due_day,

@@ -28,6 +28,7 @@ export type LoanListItem = {
   borrower_phone: string | null
   relationship_type: string | null
   principal_amount: number
+  principal_current: number
   monthly_interest_amount: number
   interest_due_day: number
   loan_start_date: string
@@ -62,6 +63,7 @@ export type LoanDetailResponse = {
     id: string
     borrower_id: string
     principal_amount: number
+    principal_current: number
     interest_percentage: number
     monthly_interest_amount: number
     interest_due_day: number
@@ -100,6 +102,40 @@ export type LoanDetailResponse = {
   }[]
 }
 
+export type TopUpLoanInput = {
+  loanId: string
+  amount: number
+  date: string // YYYY-MM-DD
+  notes?: string
+}
+
+async function topUpLoan(payload: TopUpLoanInput) {
+  const { loanId, ...body } = payload
+  const { data } = await axios.post(`/api/loans/${loanId}/top-up`, body)
+  return data
+}
+
+export type UpdateTopUpInput = {
+  paymentId: string
+  amount: number
+  date: string // YYYY-MM-DD
+  notes?: string
+  loanId: string
+}
+
+async function updateTopUp(payload: UpdateTopUpInput) {
+  const { paymentId, amount, date, notes } = payload
+  const { data } = await axios.put(`/api/principal-payments/${paymentId}`, { amount, date, notes })
+  return data
+}
+
+export type DeleteTopUpInput = { paymentId: string; loanId: string }
+
+async function deleteTopUp(payload: DeleteTopUpInput) {
+  const { paymentId } = payload
+  const { data } = await axios.delete(`/api/principal-payments/${paymentId}`)
+  return data
+}
 export type UpdateLoanInput = {
   loanId: string
   borrower?: {
@@ -210,6 +246,48 @@ export function collectMonthlyInterestMutation(
       queryClient.invalidateQueries({ queryKey: ["dashboard"] })
       queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
       queryClient.invalidateQueries({ queryKey: ["loans", "detail"] })
+    },
+  }
+}
+
+export function topUpLoanMutation(
+  queryClient: QueryClient
+): UseMutationOptions<unknown, unknown, TopUpLoanInput> {
+  return {
+    mutationKey: ["loans", "top-up"],
+    mutationFn: topUpLoan,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail", variables.loanId] })
+    },
+  }
+}
+
+export function updateTopUpMutation(
+  queryClient: QueryClient
+): UseMutationOptions<unknown, unknown, UpdateTopUpInput> {
+  return {
+    mutationKey: ["loans", "top-up", "update"],
+    mutationFn: updateTopUp,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail", variables.loanId] })
+    },
+  }
+}
+
+export function deleteTopUpMutation(
+  queryClient: QueryClient
+): UseMutationOptions<unknown, unknown, DeleteTopUpInput> {
+  return {
+    mutationKey: ["loans", "top-up", "delete"],
+    mutationFn: deleteTopUp,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail", variables.loanId] })
     },
   }
 }

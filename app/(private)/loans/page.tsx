@@ -78,7 +78,7 @@ export default function LoansPage() {
       (loansQuery.data ?? []).map((item) => ({
         id: item.id,
         borrower: item.borrower_name,
-        principal: item.principal_amount,
+        principal: item.principal_current ?? item.principal_amount,
         monthlyInterest: item.monthly_interest_amount,
         loanStatus: item.loan_status,
         relationship: item.relationship_type ?? "—",

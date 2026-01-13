@@ -175,6 +175,7 @@ export async function GET(request: Request) {
       loan_id,
       amount,
       paid_at,
+      notes,
       loans (
         borrower_id,
         borrowers (
@@ -207,7 +208,7 @@ export async function GET(request: Request) {
   const { data: activeLoanPrincipalPayments, error: activeLoanPrincipalPaymentsError } = activeLoanIds.length
     ? await supabase
         .from("principal_payments")
-        .select("loan_id, amount")
+        .select("loan_id, amount, notes")
         .in("loan_id", activeLoanIds)
         .limit(20000)
     : { data: [], error: null }
@@ -219,7 +220,12 @@ export async function GET(request: Request) {
   const principalPaidByLoanId = new Map<string, number>()
   for (const row of activeLoanPrincipalPayments ?? []) {
     const id = String(row.loan_id)
-    principalPaidByLoanId.set(id, (principalPaidByLoanId.get(id) ?? 0) + (Number(row.amount) || 0))
+    const amount = Number(row.amount) || 0
+    if (amount <= 0) continue
+    const notes = typeof row.notes === "string" ? row.notes : ""
+    const isTopUp = notes.toLowerCase().startsWith("top-up")
+    if (isTopUp) continue
+    principalPaidByLoanId.set(id, (principalPaidByLoanId.get(id) ?? 0) + amount)
   }
 
   const activeLoanRows = (activeLoans ?? []) as unknown as { id: string; principal_amount: number | null }[]
@@ -231,7 +237,13 @@ export async function GET(request: Request) {
   }, 0)
 
   const collectedInterest = (interestCollectedRows ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
-  const principalReturned = (principalPaidRows ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+  const principalReturned = (principalPaidRows ?? []).reduce((sum, r) => {
+    const amount = Number(r.amount) || 0
+    const notes = typeof (r as { notes?: unknown }).notes === "string" ? String((r as { notes?: unknown }).notes) : ""
+    const isTopUp = notes.toLowerCase().startsWith("top-up")
+    if (isTopUp) return sum
+    return amount > 0 ? sum + amount : sum
+  }, 0)
   const loansDisbursedRows = (loansDisbursed ?? []) as unknown as { principal_amount: number | null }[]
   const principalDisbursed = loansDisbursedRows.reduce((sum, l) => sum + (Number(l.principal_amount) || 0), 0)
 
