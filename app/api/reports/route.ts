@@ -39,9 +39,25 @@ function buildRangeWindow(range: TimeRange, asOfUtc: Date) {
   return { label: "Last 90 days", start, end }
 }
 
-function asBorrowerName(row: any) {
-  const name = row?.loans?.borrowers?.name
-  return typeof name === "string" && name.trim() ? name.trim() : "Unknown"
+function borrowerNameFromBorrowers(borrowers: unknown): string | null {
+  if (!borrowers) return null
+  if (Array.isArray(borrowers)) {
+    const first = borrowers[0]
+    if (!first || typeof first !== "object") return null
+    const name = (first as Record<string, unknown>).name
+    return typeof name === "string" && name.trim() ? name.trim() : null
+  }
+  if (typeof borrowers !== "object") return null
+  const name = (borrowers as Record<string, unknown>).name
+  return typeof name === "string" && name.trim() ? name.trim() : null
+}
+
+function asBorrowerName(row: unknown) {
+  if (!row || typeof row !== "object") return "Unknown"
+  const loans = (row as Record<string, unknown>).loans
+  if (!loans || typeof loans !== "object") return "Unknown"
+  const borrowers = (loans as Record<string, unknown>).borrowers
+  return borrowerNameFromBorrowers(borrowers) ?? "Unknown"
 }
 
 function isInterestPaid(row: { status: string | null; paid_at: string | null }) {
@@ -206,18 +222,18 @@ export async function GET(request: Request) {
     principalPaidByLoanId.set(id, (principalPaidByLoanId.get(id) ?? 0) + (Number(row.amount) || 0))
   }
 
-  const principalOutstanding = (activeLoans ?? []).reduce((sum, loan) => {
-    const principal = Number((loan as any).principal_amount) || 0
-    const paid = principalPaidByLoanId.get(String((loan as any).id)) ?? 0
+  const activeLoanRows = (activeLoans ?? []) as unknown as { id: string; principal_amount: number | null }[]
+
+  const principalOutstanding = activeLoanRows.reduce((sum, loan) => {
+    const principal = Number(loan.principal_amount) || 0
+    const paid = principalPaidByLoanId.get(String(loan.id)) ?? 0
     return sum + Math.max(0, principal - paid)
   }, 0)
 
   const collectedInterest = (interestCollectedRows ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
   const principalReturned = (principalPaidRows ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
-  const principalDisbursed = (loansDisbursed ?? []).reduce(
-    (sum, l) => sum + (Number((l as any).principal_amount) || 0),
-    0
-  )
+  const loansDisbursedRows = (loansDisbursed ?? []) as unknown as { principal_amount: number | null }[]
+  const principalDisbursed = loansDisbursedRows.reduce((sum, l) => sum + (Number(l.principal_amount) || 0), 0)
 
   const interestPipeline = (paymentsDueInWindow ?? []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
 
@@ -384,13 +400,22 @@ export async function GET(request: Request) {
     })
   }
 
-  for (const loan of (loansDisbursed ?? []).slice(0, 10)) {
-    const date = String((loan as any).loan_start_date ?? "")
+  type LoanDisbursedRow = {
+    id: string
+    principal_amount: number | null
+    loan_start_date: string | null
+    borrowers?: { name?: string | null } | { name?: string | null }[] | null
+  }
+
+  const loansDisbursedTop = (loansDisbursed ?? []) as unknown as LoanDisbursedRow[]
+
+  for (const loan of loansDisbursedTop.slice(0, 10)) {
+    const date = String(loan.loan_start_date ?? "")
     movements.push({
-      id: `loan-${(loan as any).id}`,
+      id: `loan-${loan.id}`,
       title: "New loan disbursed",
-      party: typeof (loan as any).borrowers?.name === "string" ? (loan as any).borrowers.name : "Unknown",
-      amount: Math.round(Number((loan as any).principal_amount) || 0),
+      party: borrowerNameFromBorrowers(loan.borrowers) ?? "Unknown",
+      amount: Math.round(Number(loan.principal_amount) || 0),
       date,
       status: "settled",
       sortTs: moment.utc(date, "YYYY-MM-DD").startOf("day").toISOString(),

@@ -100,6 +100,26 @@ export type LoanDetailResponse = {
   }[]
 }
 
+export type UpdateLoanInput = {
+  loanId: string
+  borrower?: {
+    name?: string
+    phone?: string | null
+    relationship_type?: string | null
+    notes?: string | null
+  }
+  loan?: {
+    principal_amount?: number
+    interest_percentage?: number
+    interest_due_day?: number
+    loan_start_date?: string
+    return_months?: number | null
+    status?: string
+  }
+}
+
+type UpdateLoanResponse = Pick<LoanDetailResponse, "loan" | "borrower">
+
 async function getLoanDetail(loanId: string) {
   const { data } = await axios.get<LoanDetailResponse>(`/api/loans/${loanId}`)
   return data
@@ -113,6 +133,19 @@ export function loanDetailQuery(loanId: string) {
   }
 }
 
+async function updateLoan(payload: UpdateLoanInput) {
+  const { loanId, ...body } = payload
+  const { data } = await axios.put<UpdateLoanResponse>(`/api/loans/${loanId}`, body)
+  return data
+}
+
+async function deleteLoan(loanId: string) {
+  const { data } = await axios.delete<{ ok: true; loan_id: string; borrower_deleted: boolean }>(
+    `/api/loans/${loanId}`
+  )
+  return data
+}
+
 export function createLoanMutation(
   queryClient: QueryClient
 ): UseMutationOptions<unknown, unknown, CreateLoanInput> {
@@ -122,6 +155,34 @@ export function createLoanMutation(
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
       queryClient.invalidateQueries({ queryKey: ["borrowers", "list"] })
+    },
+  }
+}
+
+export function updateLoanMutation(
+  queryClient: QueryClient
+): UseMutationOptions<unknown, unknown, UpdateLoanInput> {
+  return {
+    mutationKey: ["loans", "update"],
+    mutationFn: updateLoan,
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail", variables.loanId] })
+    },
+  }
+}
+
+export function deleteLoanMutation(
+  queryClient: QueryClient
+): UseMutationOptions<unknown, unknown, { loanId: string }> {
+  return {
+    mutationKey: ["loans", "delete"],
+    mutationFn: ({ loanId }) => deleteLoan(loanId),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail", variables.loanId] })
     },
   }
 }

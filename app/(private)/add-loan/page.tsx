@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useMemo, useState } from "react"
 import { createLoanMutation, type CreateLoanInput } from "@/queries/loanQueries"
 import MainLayout from "@/components/layout/MainLayout"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 const currency = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -15,11 +17,9 @@ const today = new Date()
 const defaultStartDate = today.toISOString().slice(0, 10)
 const defaultInterestDay = Math.min(30, today.getDate())
 
-const durationLabels: Record<string, string> = {
-  "1m": "1 month",
-  "4m": "4 months",
-  "6m": "6 months",
-  "12m": "1 year",
+function clampInterestDueDay(value: number) {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(30, Math.max(1, Math.trunc(value)))
 }
 
 const durationToMonths: Record<string, number> = { "1m": 1, "4m": 4, "6m": 6, "12m": 12 }
@@ -31,11 +31,12 @@ export default function AddLoanPage() {
   const [relationship, setRelationship] = useState("friend")
   const [amount, setAmount] = useState<string>("")
   const [interestPercent, setInterestPercent] = useState<string>("")
-  const [interestDueDay, setInterestDueDay] = useState<number>(defaultInterestDay)
+  const [interestDueDay, setInterestDueDay] = useState<string>(String(defaultInterestDay))
   const [startDate, setStartDate] = useState<string>(defaultStartDate)
   const [returnDuration, setReturnDuration] = useState<string>("4m")
   const [error, setError] = useState<string | null>(null)
 
+  const router = useRouter()
   const queryClient = useQueryClient()
   const createLoan = useMutation(createLoanMutation(queryClient))
 
@@ -73,16 +74,22 @@ export default function AddLoanPage() {
       loan: {
         principal_amount: Number(amount) || 0,
         interest_percentage: Number(interestPercent) || 0,
-        interest_due_day: interestDueDay,
+        interest_due_day: clampInterestDueDay(Number(interestDueDay)),
         loan_start_date: startDate,
         return_months: durationToMonths[returnDuration] ?? null,
       },
     }
 
     try {
-      await createLoan.mutateAsync(payload)
+      await createLoan.mutateAsync(payload, {
+        onSuccess: () => {
+          toast.success("Loan created successfully")
+          router.push("/loans")
+        },
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create loan"
+      toast.error(message)
       setError(message)
     }
   }
@@ -119,7 +126,7 @@ export default function AddLoanPage() {
             <p className="text-sm font-semibold text-zinc-900">
               {expectedReturnDate || "Select start + duration"}
             </p>
-            <p className="text-[11px] text-zinc-500">Due day: {interestDueDay}</p>
+            <p className="text-[11px] text-zinc-500">Due day: {interestDueDay || "—"}</p>
           </div>
         </div>
       </div>
@@ -169,7 +176,6 @@ export default function AddLoanPage() {
                   onChange={(e) => setRelationship(e.target.value)}
                   className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 >
-                  <option value="family">Family</option>
                   <option value="friend">Friend</option>
                   <option value="business">Business</option>
                   <option value="other">Other</option>
@@ -218,12 +224,24 @@ export default function AddLoanPage() {
               <div className="relative">
                 <input
                   type="number"
-                  inputMode="decimal"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min={0}
-                  step="0.1"
+                  max={99}
+                  step={1}
                   value={interestPercent}
-                  onChange={(e) => setInterestPercent(e.target.value)}
-                  placeholder="e.g. 1.5%"
+                  onKeyDown={(e) => {
+                    // Prevent decimals / exponent input in number field.
+                    if (e.key === "." || e.key === "," || e.key === "e" || e.key === "E") {
+                      e.preventDefault()
+                    }
+                  }}
+                  onChange={(e) => {
+                    // Keep only digits, max 2 digits (0-99) as requested.
+                    const next = e.target.value.replace(/\D/g, "").slice(0, 2)
+                    setInterestPercent(next)
+                  }}
+                  placeholder="e.g. 10%"
                   className="h-11 w-full rounded-lg border border-zinc-200 px-3 pr-10 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                   required
                 />
@@ -267,12 +285,23 @@ export default function AddLoanPage() {
               <span className="text-sm font-medium text-zinc-900">Interest Due Day (1–30)</span>
               <input
                 type="number"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 min={1}
                 max={30}
                 value={interestDueDay}
                 onChange={(e) => {
-                  const next = Number(e.target.value)
-                  setInterestDueDay(Math.min(30, Math.max(1, next || 1)))
+                  // Allow empty while editing; clamp later on blur / submit.
+                  const next = e.target.value.replace(/\D/g, "").slice(0, 2)
+                  setInterestDueDay(next)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "." || e.key === "," || e.key === "e" || e.key === "E") {
+                    e.preventDefault()
+                  }
+                }}
+                onBlur={() => {
+                  setInterestDueDay(String(clampInterestDueDay(Number(interestDueDay))))
                 }}
                 className="h-11 w-full rounded-lg border border-zinc-200 px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
               />
@@ -316,7 +345,7 @@ export default function AddLoanPage() {
         </section>
       </form>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-[88px] z-30 px-4">
+      <div className="pb-6">
         <div className="pointer-events-auto rounded-2xl bg-white p-3 shadow-lg ring-1 ring-brand-100">
           <button
             type="submit"

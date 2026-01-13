@@ -105,6 +105,7 @@ export async function POST(request: Request, context: { params: Params | Promise
   const asOfUtc = asOfDate ?? new Date()
   const asOfDateIso = toIsoDate(asOfUtc)
   const asOfMonthYear = currentMonthYear(asOfUtc)
+  const startOfYearIso = `${asOfUtc.getUTCFullYear()}-01-01`
 
   const paidAtDate = body.paid_at ? new Date(body.paid_at) : new Date()
   if (Number.isNaN(paidAtDate.getTime())) {
@@ -134,6 +135,8 @@ export async function POST(request: Request, context: { params: Params | Promise
     .eq("loan_id", loanId)
     .is("paid_at", null)
     .neq("status", "paid")
+    // For legacy loans, ignore unpaid rows from previous years so we don't keep chaining schedules from 2024/2025.
+    .gte("due_date", startOfYearIso)
     .lte("due_date", asOfDateIso)
     .order("due_date", { ascending: true })
     .maybeSingle()

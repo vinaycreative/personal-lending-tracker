@@ -17,6 +17,7 @@ type Loan = {
   interestDueDay: number
   phone: string | null
   startDate: string
+  startDateIso: string
 }
 
 const currency = new Intl.NumberFormat("en-IN", {
@@ -66,6 +67,8 @@ export default function LoansPage() {
   const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "closed">("all")
   const [query, setQuery] = useState("")
+  const [startFrom, setStartFrom] = useState<string>("")
+  const [startTo, setStartTo] = useState<string>("")
 
   const loansQuery = useQuery(loansListQuery())
 
@@ -81,24 +84,9 @@ export default function LoansPage() {
         interestDueDay: item.interest_due_day,
         phone: item.borrower_phone,
         startDate: formatIsoDate(item.loan_start_date),
+        startDateIso: item.loan_start_date,
       })),
     [loansQuery.data]
-  )
-
-  const totals = useMemo(
-    () =>
-      loans.reduce(
-        (acc, loan) => {
-          if (normalizeLoanStatus(loan.loanStatus) === "active") {
-            acc.principal += loan.principal
-            acc.monthlyInterest += loan.monthlyInterest
-            acc.active += 1
-          }
-          return acc
-        },
-        { principal: 0, monthlyInterest: 0, active: 0 }
-      ),
-    [loans]
   )
 
   const filteredLoans = useMemo(() => {
@@ -108,6 +96,12 @@ export default function LoansPage() {
       .filter((loan) =>
         statusFilter === "all" ? true : normalizeLoanStatus(loan.loanStatus) === statusFilter
       )
+      .filter((loan) => {
+        // Date filter (inclusive). loan.startDateIso is YYYY-MM-DD so string comparison works.
+        if (startFrom && loan.startDateIso < startFrom) return false
+        if (startTo && loan.startDateIso > startTo) return false
+        return true
+      })
       .filter((loan) =>
         normalizedQuery
           ? loan.borrower.toLowerCase().includes(normalizedQuery) ||
@@ -120,7 +114,23 @@ export default function LoansPage() {
           weight[normalizeLoanStatus(a.loanStatus)] - weight[normalizeLoanStatus(b.loanStatus)]
         )
       })
-  }, [loans, query, statusFilter])
+  }, [loans, query, startFrom, startTo, statusFilter])
+
+  const totals = useMemo(
+    () =>
+      filteredLoans.reduce(
+        (acc, loan) => {
+          if (normalizeLoanStatus(loan.loanStatus) === "active") {
+            acc.principal += loan.principal
+            acc.monthlyInterest += loan.monthlyInterest
+            acc.active += 1
+          }
+          return acc
+        },
+        { principal: 0, monthlyInterest: 0, active: 0 }
+      ),
+    [filteredLoans]
+  )
 
   const statusChips: { key: "all" | "active" | "closed"; label: string; count: number }[] = [
     { key: "all", label: "All", count: loans.length },
@@ -191,10 +201,42 @@ export default function LoansPage() {
               className="h-11 w-full rounded-lg border border-zinc-200 pl-9 pr-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </div>
-          <button className="flex h-11 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100">
+          <button
+            type="button"
+            onClick={() => {
+              setStartFrom("")
+              setStartTo("")
+            }}
+            className="flex h-11 items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-sm font-medium text-zinc-700 shadow-sm transition hover:bg-zinc-100"
+          >
             <Filter className="h-4 w-4" />
-            Filters
+            Clear dates
           </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+              Start date from
+            </span>
+            <input
+              type="date"
+              value={startFrom}
+              onChange={(e) => setStartFrom(e.target.value)}
+              className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+              Start date to
+            </span>
+            <input
+              type="date"
+              value={startTo}
+              onChange={(e) => setStartTo(e.target.value)}
+              className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+            />
+          </label>
         </div>
 
         <div className="flex flex-wrap gap-2">

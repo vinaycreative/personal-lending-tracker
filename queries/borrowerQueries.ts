@@ -33,3 +33,48 @@ export function createBorrowerMutation(queryClient: QueryClient) {
     },
   }
 }
+
+export type UpdateBorrowerInput = {
+  borrowerId: string
+  name?: string
+  phone?: string | null
+  relationship_type?: string | null
+  notes?: string | null
+}
+
+async function updateBorrower({ borrowerId, ...payload }: UpdateBorrowerInput) {
+  const { data } = await axios.put(`/api/borrowers/${borrowerId}`, payload)
+  return data.borrower
+}
+
+async function deleteBorrower(borrowerId: string) {
+  const { data } = await axios.delete(`/api/borrowers/${borrowerId}`)
+  return data
+}
+
+export function updateBorrowerMutation(queryClient: QueryClient) {
+  return {
+    mutationKey: ["borrowers", "update"],
+    mutationFn: updateBorrower,
+    onSuccess: (_data: unknown, variables: UpdateBorrowerInput) => {
+      queryClient.invalidateQueries({ queryKey: ["borrowers", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "detail"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["borrowers", "detail", variables.borrowerId] })
+    },
+  }
+}
+
+export function deleteBorrowerMutation(queryClient: QueryClient) {
+  return {
+    mutationKey: ["borrowers", "delete"],
+    mutationFn: ({ borrowerId }: { borrowerId: string }) => deleteBorrower(borrowerId),
+    onSuccess: (_data: unknown, variables: { borrowerId: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["borrowers", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["loans", "list"] })
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      queryClient.invalidateQueries({ queryKey: ["borrowers", "detail", variables.borrowerId] })
+    },
+  }
+}

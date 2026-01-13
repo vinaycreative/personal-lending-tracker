@@ -168,7 +168,7 @@ export default function Dashboard() {
 
       {/* Total Collection */}
       <section className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-6 shadow-sm ring-1 ring-brand-100">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-brand-700">
               Collection focus
@@ -191,7 +191,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid w-full max-w-sm grid-cols-2 gap-3 sm:max-w-xs">
+          <div className="grid w-full grid-cols-2 gap-4">
             <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-inner">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] uppercase tracking-wide text-zinc-500">Due today</p>
@@ -254,7 +254,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 py-4 pr-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid min-h-0 gap-4 overflow-y-auto px-4 py-4">
           {todaysDue.map((loan) => (
             <div
               key={loan.id}

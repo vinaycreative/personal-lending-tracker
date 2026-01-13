@@ -7,13 +7,47 @@ import {
   CheckCircle2,
   Clock4,
   MessageCircle,
+  Pencil,
   Phone,
   Receipt,
+  Save,
+  Trash2,
+  X,
 } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useRouter } from "next/navigation"
 import MainLayout from "@/components/layout/MainLayout"
-import { loanDetailQuery, type PaymentStatus } from "@/queries/loanQueries"
+import { loanDetailQuery, updateLoanMutation, type PaymentStatus } from "@/queries/loanQueries"
 import { AxiosError } from "axios"
+import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { deleteBorrowerMutation } from "@/queries/borrowerQueries"
+import { useState } from "react"
+
+function extractApiErrorMessage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null
+  const record = data as Record<string, unknown>
+  const err = record.error
+  return typeof err === "string" && err.trim() ? err : null
+}
 
 type Loan = {
   id: string
@@ -111,7 +145,27 @@ function durationLabel(months: number | null) {
 }
 
 export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
+  const router = useRouter()
+  const queryClient = useQueryClient()
   const detailQuery = useQuery(loanDetailQuery(loanId))
+
+  const updateLoan = useMutation(updateLoanMutation(queryClient))
+  const deleteBorrower = useMutation(deleteBorrowerMutation(queryClient))
+
+  const [isEditing, setIsEditing] = useState(false)
+  type EditDraft = {
+    borrowerName: string
+    borrowerPhone: string
+    relationship: string
+    notes: string
+    principal: string
+    interestPercent: string
+    interestDueDay: string
+    startDate: string
+    returnMonths: string
+    status: "active" | "closed"
+  }
+  const [draft, setDraft] = useState<EditDraft | null>(null)
 
   if (detailQuery.isLoading) {
     return (
@@ -126,7 +180,7 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
   if (detailQuery.isError || !detailQuery.data) {
     const message =
       detailQuery.error instanceof AxiosError
-        ? (detailQuery.error.response?.data as any)?.error || detailQuery.error.message
+        ? extractApiErrorMessage(detailQuery.error.response?.data) || detailQuery.error.message
         : detailQuery.error instanceof Error
         ? detailQuery.error.message
         : "Failed to load loan"
@@ -216,23 +270,150 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
         <span className="text-xs text-zinc-500">Borrower profile</span>
       </div>
 
-      <header className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-5 shadow-sm ring-1 ring-brand-100">
-        <div className="flex flex-col sm:flex-row justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-700">
-              Borrower
-            </p>
-            <h1 className="text-2xl font-semibold text-zinc-900 capitalize">{profile.name}</h1>
-            <p className="text-sm text-zinc-600 capitalize">
-              {profile.relationship} • {profile.location}
-            </p>
-            <p className="text-xs text-zinc-500">{profile.notes}</p>
+      <header className="rounded-2xl bg-linear-to-r from-brand-50 via-white to-brand-50 p-5 shadow-sm ring-1 ring-brand-100 overflow-hidden">
+        <div className="flex flex-col justify-between gap-4">
+          <div className="space-y-1 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-brand-700">
+                Borrower
+              </p>
+              <h1 className="text-2xl font-semibold text-zinc-900 capitalize">{profile.name}</h1>
+              <p className="text-sm text-zinc-600 capitalize">
+                {profile.relationship} • {profile.location}
+              </p>
+              <p className="text-xs text-zinc-500">{profile.notes}</p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Borrower
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete borrower?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will delete the borrower and ALL loans/payments under this borrower.
+                      This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          const borrowerId = borrower?.id ?? loanRow.borrower_id
+                          await deleteBorrower.mutateAsync({ borrowerId })
+                          toast.success("Borrower deleted")
+                          router.push("/loans")
+                        } catch (e) {
+                          const msg = e instanceof Error ? e.message : "Failed to delete borrower"
+                          toast.error(msg)
+                        }
+                      }}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              {loanRow.status !== "closed" ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800"
+                    >
+                      <Receipt className="h-4 w-4" />
+                      Close Loan
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Close this loan?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Closing a loan will mark it as closed and remove it from active totals and
+                        due lists. You can reopen later if needed.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={async () => {
+                          try {
+                            await updateLoan.mutateAsync({
+                              loanId,
+                              loan: { status: "closed" },
+                            })
+                            toast.success("Loan closed")
+                            setIsEditing(false)
+                            setDraft(null)
+                          } catch (e) {
+                            const msg = e instanceof Error ? e.message : "Failed to close loan"
+                            toast.error(msg)
+                          }
+                        }}
+                      >
+                        Close
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50"
+                    >
+                      <Receipt className="h-4 w-4" />
+                      Reopen Loan
+                    </button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Reopen this loan?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will mark the loan as active again.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={async () => {
+                          try {
+                            await updateLoan.mutateAsync({
+                              loanId,
+                              loan: { status: "active" },
+                            })
+                            toast.success("Loan reopened")
+                            setIsEditing(false)
+                            setDraft(null)
+                          } catch (e) {
+                            const msg = e instanceof Error ? e.message : "Failed to reopen loan"
+                            toast.error(msg)
+                          }
+                        }}
+                      >
+                        Reopen
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <a
               href={profile.phone ? `tel:${profile.phone}` : undefined}
               aria-disabled={!profile.phone}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-sm transition ${
+              className={`flex items-center gap-2 rounded-lg border px-3 py-3 justify-center text-xs font-medium shadow-sm transition ${
                 profile.phone
                   ? "border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
                   : "border-zinc-200 bg-zinc-50 text-zinc-400 pointer-events-none"
@@ -245,9 +426,304 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
               <MessageCircle className="h-4 w-4" />
               WhatsApp
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft({
+                  borrowerName: borrower?.name ?? "",
+                  borrowerPhone: borrower?.phone ?? "",
+                  relationship: borrower?.relationship_type ?? "",
+                  notes: borrower?.notes ?? "",
+                  principal: String(loanRow.principal_amount ?? ""),
+                  interestPercent: String(
+                    Math.trunc(Number(loanRow.interest_percentage) || 0) || ""
+                  ),
+                  interestDueDay: String(loanRow.interest_due_day ?? ""),
+                  startDate: String(loanRow.loan_start_date ?? ""),
+                  returnMonths: loanRow.return_months ? String(loanRow.return_months) : "",
+                  status: loanRow.status === "closed" ? "closed" : "active",
+                })
+                setIsEditing(true)
+              }}
+              className="flex items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </button>
           </div>
         </div>
       </header>
+
+      <Dialog
+        open={Boolean(isEditing && draft)}
+        onOpenChange={(open) => {
+          if (open) return
+          setIsEditing(false)
+          setDraft(null)
+        }}
+      >
+        <DialogContent className="p-0 overflow-hidden">
+          {draft ? (
+            <>
+              <DialogHeader className="px-5 pt-5 pb-3 border-b border-zinc-200">
+                <DialogTitle>Edit borrower & loan</DialogTitle>
+                <DialogDescription>Scroll to see all fields. Tap Save to apply.</DialogDescription>
+              </DialogHeader>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 space-y-4 w-full overflow-hidden">
+                <section className="rounded-2xl bg-white space-y-4">
+                  <header className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                      Borrower
+                    </p>
+                  </header>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Name</span>
+                      <input
+                        value={draft.borrowerName}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev ? { ...prev, borrowerName: e.target.value } : prev
+                          )
+                        }
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Phone</span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draft.borrowerPhone}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  borrowerPhone: e.target.value.replace(/\D/g, "").slice(0, 10),
+                                }
+                              : prev
+                          )
+                        }
+                        placeholder="10-digit mobile"
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Relationship</span>
+                      <select
+                        value={draft.relationship}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev ? { ...prev, relationship: e.target.value } : prev
+                          )
+                        }
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      >
+                        <option value="">—</option>
+                        <option value="family">Family</option>
+                        <option value="friend">Friend</option>
+                        <option value="business">Business</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </label>
+                    <label className="space-y-2 sm:col-span-1">
+                      <span className="text-sm font-medium text-zinc-900">Notes</span>
+                      <textarea
+                        value={draft.notes}
+                        onChange={(e) =>
+                          setDraft((prev) => (prev ? { ...prev, notes: e.target.value } : prev))
+                        }
+                        rows={2}
+                        placeholder="Optional"
+                        className="w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                  </div>
+                </section>
+
+                <div className="border-t border-zinc-200 bg-white space-y-4"></div>
+                <section className="rounded-2xl bg-white space-y-4">
+                  <header className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                      Loan
+                    </p>
+                  </header>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Principal</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draft.principal}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev ? { ...prev, principal: e.target.value.replace(/\D/g, "") } : prev
+                          )
+                        }
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">
+                        Interest % (monthly)
+                      </span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          max={99}
+                          step={1}
+                          value={draft.interestPercent}
+                          onKeyDown={(e) => {
+                            if (e.key === "." || e.key === "," || e.key === "e" || e.key === "E")
+                              e.preventDefault()
+                          }}
+                          onChange={(e) =>
+                            setDraft((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    interestPercent: e.target.value.replace(/\D/g, "").slice(0, 2),
+                                  }
+                                : prev
+                            )
+                          }
+                          className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 pr-9 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-zinc-500">
+                          %
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Due day</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draft.interestDueDay}
+                        onKeyDown={(e) => {
+                          if (e.key === "." || e.key === "," || e.key === "e" || e.key === "E")
+                            e.preventDefault()
+                        }}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  interestDueDay: e.target.value.replace(/\D/g, "").slice(0, 2),
+                                }
+                              : prev
+                          )
+                        }
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Start date</span>
+                      <input
+                        type="date"
+                        value={draft.startDate}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev ? { ...prev, startDate: e.target.value } : prev
+                          )
+                        }
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                    <label className="space-y-2">
+                      <span className="text-sm font-medium text-zinc-900">Duration</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draft.returnMonths}
+                        onChange={(e) =>
+                          setDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  returnMonths: e.target.value.replace(/\D/g, "").slice(0, 2),
+                                }
+                              : prev
+                          )
+                        }
+                        placeholder="months"
+                        className="h-11 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
+
+              <DialogFooter className="border-t bg-white px-5 py-4 flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false)
+                    setDraft(null)
+                  }}
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50"
+                >
+                  <X className="h-4 w-4" />
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={updateLoan.isPending}
+                  onClick={async () => {
+                    try {
+                      await updateLoan.mutateAsync({
+                        loanId,
+                        borrower: {
+                          name: draft.borrowerName.trim(),
+                          phone: draft.borrowerPhone.trim() ? draft.borrowerPhone.trim() : null,
+                          relationship_type: draft.relationship.trim()
+                            ? draft.relationship.trim()
+                            : null,
+                          notes: draft.notes.trim() ? draft.notes.trim() : null,
+                        },
+                        loan: {
+                          principal_amount: Number(draft.principal) || 0,
+                          interest_percentage: Number(draft.interestPercent) || 0,
+                          interest_due_day: Number(draft.interestDueDay) || 1,
+                          loan_start_date: draft.startDate,
+                          return_months: draft.returnMonths ? Number(draft.returnMonths) : null,
+                          status: draft.status,
+                        },
+                      })
+                      toast.success("Updated successfully")
+                      setIsEditing(false)
+                      setDraft(null)
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : "Failed to update"
+                      toast.error(msg)
+                    }
+                  }}
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:opacity-60"
+                >
+                  <Save className="h-4 w-4" />
+                  Save
+                </button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">

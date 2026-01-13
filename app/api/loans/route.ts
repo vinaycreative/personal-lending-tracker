@@ -1,6 +1,31 @@
 import { supabase } from "@/lib/supabase/client"
 import moment from "moment"
 
+type BorrowerRow = {
+  id: string
+  name: string
+  phone: string | null
+  relationship_type: string | null
+}
+
+type LoanRow = {
+  id: string
+  borrower_id: string
+  principal_amount: number
+  monthly_interest_amount: number
+  interest_due_day: number
+  loan_start_date: string | null
+  return_months: number | null
+  status: string | null
+  borrowers?: BorrowerRow | BorrowerRow[] | null
+}
+
+function getBorrower(loan: LoanRow): BorrowerRow | null {
+  const b = loan.borrowers
+  if (!b) return null
+  return Array.isArray(b) ? (b[0] ?? null) : b
+}
+
 type CreateLoanRequest = {
   borrower: {
     name?: string
@@ -85,7 +110,27 @@ function buildNextMonthInterestSchedule(startDateIso: string, dueDay: number) {
   return { month_year, due_date }
 }
 
-type PaymentStatus = "due" | "overdue" | "paid"
+function buildInitialInterestSchedule(params: { startDateIso: string; dueDay: number; asOfUtc: Date }) {
+  const { startDateIso, dueDay, asOfUtc } = params
+  const start = parseIsoDateOnly(startDateIso)
+  if (!start) return null
+
+  const startIso = toIsoDate(start)
+  const startMonthYear = startIso.slice(0, 7)
+  const asOfMonthYear = currentMonthYear(asOfUtc)
+
+  // If the loan starts this month, first interest is due next month (existing behavior).
+  if (startMonthYear === asOfMonthYear) {
+    return buildNextMonthInterestSchedule(startDateIso, dueDay)
+  }
+
+  // If the loan started in a past month/year (e.g. 2024/2025), do NOT backfill gaps.
+  // Start tracking from the current month/year so the user can record interest going forward.
+  return {
+    month_year: asOfMonthYear,
+    due_date: buildDueDateIsoForMonth(dueDay, asOfUtc),
+  }
+}
 
 function computePaymentStatus(dueDateIso: string, isPaid: boolean, asOfDateIso: string) {
   if (isPaid) return "paid" as const
@@ -97,6 +142,7 @@ function computePaymentStatus(dueDateIso: string, isPaid: boolean, asOfDateIso: 
 export async function GET() {
   const asOfUtc = new Date()
   const asOfDateIso = toIsoDate(asOfUtc)
+  const startOfYearIso = `${asOfUtc.getUTCFullYear()}-01-01`
 
   const { data: loans, error } = await supabase
     .from("loans")
@@ -118,6 +164,8 @@ export async function GET() {
       )
     `
     )
+    // Loans page should be sorted by the business date (when money was lent), not when the record was created.
+    .order("loan_start_date", { ascending: false })
     .order("created_at", { ascending: false })
 
   if (error) {
@@ -131,6 +179,9 @@ export async function GET() {
         .from("monthly_interest_payments")
         .select("loan_id, due_date, status, paid_at")
         .in("loan_id", loanIds)
+        // For legacy loans (2024/2025 start dates), ignore very old unpaid rows so we don't show
+        // a permanently-overdue "next due" from last year.
+        .gte("due_date", startOfYearIso)
         .order("due_date", { ascending: true })
         .limit(10000)
     : { data: [], error: null }
@@ -167,28 +218,26 @@ export async function GET() {
     if (!lastPaidAtByLoanId.has(row.loan_id)) lastPaidAtByLoanId.set(row.loan_id, row.paid_at)
   }
 
-  const responseLoans = (loans ?? []).map((loan) => {
-    const borrower = (loan as any).borrowers as
-      | { id: string; name: string; phone: string | null; relationship_type: string | null }
-      | null
-      | undefined
+  const loanRows = (loans ?? []) as unknown as LoanRow[]
 
+  const responseLoans = loanRows.map((loan) => {
+    const borrower = getBorrower(loan)
     const mp = nextUnpaidByLoanId.get(String(loan.id))
     const dueDateIso = mp?.due_date ?? fallbackDueDateIso(loan.loan_start_date, loan.interest_due_day, asOfUtc)
     const isPaid = Boolean(mp) ? false : loan.status === "closed"
     const payment_status = computePaymentStatus(dueDateIso, isPaid, asOfDateIso)
 
-    const lastPaidAt = lastPaidAtByLoanId.get(loan.id) ?? null
+    const lastPaidAt = lastPaidAtByLoanId.get(String(loan.id)) ?? null
 
     return {
-      id: loan.id,
-      borrower_id: loan.borrower_id,
+      id: String(loan.id),
+      borrower_id: String(loan.borrower_id),
       borrower_name: borrower?.name ?? "Unknown",
       borrower_phone: borrower?.phone ?? null,
       relationship_type: borrower?.relationship_type ?? null,
-      principal_amount: loan.principal_amount,
-      monthly_interest_amount: loan.monthly_interest_amount,
-      interest_due_day: loan.interest_due_day,
+      principal_amount: Number(loan.principal_amount) || 0,
+      monthly_interest_amount: Number(loan.monthly_interest_amount) || 0,
+      interest_due_day: Number(loan.interest_due_day) || 1,
       loan_start_date: loan.loan_start_date,
       return_months: loan.return_months,
       loan_status: loan.status,
@@ -257,7 +306,7 @@ export async function POST(request: Request) {
   }
 
   // MUST create exactly one monthly interest record for the *next month* at loan creation time
-  const schedule = buildNextMonthInterestSchedule(startDate, dueDay)
+  const schedule = buildInitialInterestSchedule({ startDateIso: startDate, dueDay, asOfUtc: new Date() })
   if (!schedule) {
     await supabase.from("loans").delete().eq("id", loan.id)
     await supabase.from("borrowers").delete().eq("id", borrower.id)

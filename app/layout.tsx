@@ -2,8 +2,7 @@ import type { Metadata } from "next"
 import type { Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
-import { QueryProvider } from "@/context/TanstackProvider"
-import PWARegister from "./pwa-register"
+import Providers from "./providers"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,10 +48,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <QueryProvider>
-          <PWARegister />
-          {children}
-        </QueryProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

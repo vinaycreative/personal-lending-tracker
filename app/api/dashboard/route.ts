@@ -3,6 +3,30 @@ import moment from "moment"
 
 type PaymentStatus = "due" | "overdue" | "paid"
 
+type BorrowerRow = {
+  id: string
+  name: string
+  phone: string | null
+  relationship_type: string | null
+}
+
+type LoanRow = {
+  id: string
+  borrower_id: string
+  principal_amount: number
+  monthly_interest_amount: number
+  interest_due_day: number
+  loan_start_date: string | null
+  status: string | null
+  borrowers?: BorrowerRow | BorrowerRow[] | null
+}
+
+function getBorrower(loan: LoanRow): BorrowerRow | null {
+  const b = loan.borrowers
+  if (!b) return null
+  return Array.isArray(b) ? (b[0] ?? null) : b
+}
+
 function parseIsoDateOnly(dateIso: string) {
   const m = moment.utc(dateIso, "YYYY-MM-DD", true)
   return m.isValid() ? m.toDate() : null
@@ -82,6 +106,8 @@ export async function GET(request: Request) {
   const asOfDate = asOfParam ? parseIsoDateOnly(asOfParam) : null
   const asOfUtc = asOfDate ?? new Date()
   const asOfDateIso = toIsoDate(asOfUtc)
+  const asOfMonthYear = currentMonthYear(asOfUtc)
+  const startOfYearIso = `${asOfUtc.getUTCFullYear()}-01-01`
   // NOTE: We intentionally drive "due today / overdue" off `monthly_interest_payments.due_date`,
   // not `month_year`, so manual due_date edits reflect immediately.
 
@@ -117,6 +143,8 @@ export async function GET(request: Request) {
         .from("monthly_interest_payments")
         .select("loan_id, due_date, status, paid_at, amount")
         .in("loan_id", loanIds)
+        // Ignore unpaid rows from previous years so legacy loans don't show a 2024/2025 due date forever.
+        .gte("due_date", startOfYearIso)
         .lte("due_date", asOfDateIso)
         .order("due_date", { ascending: true })
         .limit(5000)
@@ -125,6 +153,8 @@ export async function GET(request: Request) {
   if (paymentsError) {
     return Response.json({ error: paymentsError.message }, { status: 500 })
   }
+
+  const loanRows = (loans ?? []) as unknown as LoanRow[]
 
   // Pick the earliest unpaid payment per loan (most overdue / due today).
   const unpaidDueByLoanId = new Map<
@@ -137,18 +167,32 @@ export async function GET(request: Request) {
     if (!unpaidDueByLoanId.has(row.loan_id)) unpaidDueByLoanId.set(row.loan_id, row)
   }
 
-  const loanById = new Map((loans ?? []).map((l) => [String(l.id), l] as const))
+  // Used to suppress fallback-based "due" when the user already recorded this month as paid.
+  const { data: monthRows, error: monthRowsError } = loanIds.length
+    ? await supabase
+        .from("monthly_interest_payments")
+        .select("loan_id, status, paid_at")
+        .in("loan_id", loanIds)
+        .eq("month_year", asOfMonthYear)
+        .limit(5000)
+    : { data: [], error: null }
 
-  const normalizedLoans = (loans ?? []).map((loan) => {
-    const borrower = (loan as any).borrowers as
-      | { id: string; name: string; phone: string | null; relationship_type: string | null }
-      | null
-      | undefined
+  if (monthRowsError) {
+    return Response.json({ error: monthRowsError.message }, { status: 500 })
+  }
 
+  const hasPaidRowForAsOfMonth = new Set<string>()
+  for (const row of monthRows ?? []) {
+    const isPaid = row.status === "paid" || Boolean(row.paid_at)
+    if (isPaid) hasPaidRowForAsOfMonth.add(String(row.loan_id))
+  }
+
+  const normalizedLoans = loanRows.map((loan) => {
+    const borrower = getBorrower(loan)
     const mp = unpaidDueByLoanId.get(String(loan.id))
     const dueDateIso =
       mp?.due_date ??
-      fallbackDueDateIso((loan as any).loan_start_date, loan.interest_due_day, asOfUtc)
+      fallbackDueDateIso(loan.loan_start_date, loan.interest_due_day, asOfUtc)
     const isPaid = Boolean(mp) ? false : loan.status === "closed" // if no unpaid row is found, treat as paid only when loan is closed
     const payment_status = computePaymentStatus(dueDateIso, isPaid, asOfDateIso)
 
@@ -178,18 +222,48 @@ export async function GET(request: Request) {
 
   // IMPORTANT: "Today's Due" should be driven ONLY by unpaid rows in `monthly_interest_payments`.
   // This prevents already-paid items from showing due to fallback `loan_start_date` logic.
-  const todaysDue = Array.from(unpaidDueByLoanId.entries())
-    .map(([loanId, payment]) => {
-      const loan = loanById.get(loanId)
-      if (!loan) return null
-      if (String((loan as any).status ?? "") === "closed") return null
+  const todaysDue = loanRows
+    .map((loan) => {
+      if (String(loan.status ?? "") === "closed") return null
 
-      const borrower = (loan as any).borrowers as
-        | { id: string; name: string; phone: string | null; relationship_type: string | null }
-        | null
-        | undefined
+      const borrower = getBorrower(loan)
 
-      const dueDateIso = payment.due_date
+      const loanId = String(loan.id)
+      const unpaid = unpaidDueByLoanId.get(loanId)
+
+      // Preferred: real unpaid row due by asOf (covers normal overdue/due cases).
+      if (unpaid) {
+        const dueDateIso = unpaid.due_date
+        const payment_status: PaymentStatus = moment
+          .utc(asOfDateIso, "YYYY-MM-DD")
+          .isAfter(moment.utc(dueDateIso, "YYYY-MM-DD"), "day")
+          ? "overdue"
+          : "due"
+
+        return {
+          id: loanId,
+          borrower_id: String(loan.borrower_id),
+          borrower_name: borrower?.name ?? "Unknown",
+          borrower_phone: borrower?.phone ?? null,
+          relationship_type: borrower?.relationship_type ?? null,
+          principal_amount: Number(loan.principal_amount) || 0,
+          monthly_interest_amount: Number(unpaid.amount ?? loan.monthly_interest_amount) || 0,
+          loan_status: String(loan.status ?? ""),
+          next_due_date: dueDateIso,
+          payment_status,
+        }
+      }
+
+      // Legacy loans: if there is no current-year unpaid row, allow a fallback "due" but ONLY when
+      // the user has not already recorded a paid row for this month.
+      if (hasPaidRowForAsOfMonth.has(loanId)) return null
+
+      const dueDateIso = fallbackDueDateIso(loan.loan_start_date, loan.interest_due_day, asOfUtc)
+      const isDueOrOverdue = !moment
+        .utc(asOfDateIso, "YYYY-MM-DD")
+        .isBefore(moment.utc(dueDateIso, "YYYY-MM-DD"), "day")
+      if (!isDueOrOverdue) return null
+
       const payment_status: PaymentStatus = moment
         .utc(asOfDateIso, "YYYY-MM-DD")
         .isAfter(moment.utc(dueDateIso, "YYYY-MM-DD"), "day")
@@ -197,14 +271,14 @@ export async function GET(request: Request) {
         : "due"
 
       return {
-        id: String(loan.id),
+        id: loanId,
         borrower_id: String(loan.borrower_id),
         borrower_name: borrower?.name ?? "Unknown",
         borrower_phone: borrower?.phone ?? null,
         relationship_type: borrower?.relationship_type ?? null,
         principal_amount: Number(loan.principal_amount) || 0,
-        monthly_interest_amount: Number(payment.amount ?? loan.monthly_interest_amount) || 0,
-        loan_status: String((loan as any).status ?? ""),
+        monthly_interest_amount: Number(loan.monthly_interest_amount) || 0,
+        loan_status: String(loan.status ?? ""),
         next_due_date: dueDateIso,
         payment_status,
       }
