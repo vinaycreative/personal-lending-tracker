@@ -6,6 +6,7 @@ import MainLayout from "@/components/layout/MainLayout"
 import { dashboardQuery } from "@/queries/dashboardQueries"
 import { collectMonthlyInterestMutation } from "@/queries/loanQueries"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { FullScreenLoader } from "@/components/ui/full-screen-loader"
 import moment from "moment"
 import { useMemo, useState } from "react"
 
@@ -92,6 +93,10 @@ export default function Dashboard() {
       status: loan.payment_status as PaymentStatus,
     })) ?? []
 
+  if (isLoading) {
+    return <FullScreenLoader label="Loading dashboard…" variant="content" />
+  }
+
   return (
     <MainLayout>
       {confirmOpen ? (
@@ -154,12 +159,7 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      {isLoading ? (
-        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-sm font-medium text-zinc-900">Loading dashboard…</p>
-          <p className="text-xs text-zinc-600">Fetching latest loans and due amounts.</p>
-        </div>
-      ) : isError ? (
+      {isError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-sm">
           <p className="text-sm font-semibold text-red-800">Couldn’t load dashboard</p>
           <p className="text-xs text-red-700">Please refresh and try again.</p>

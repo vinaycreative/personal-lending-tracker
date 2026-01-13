@@ -11,6 +11,7 @@ import {
   Wallet,
 } from "lucide-react"
 import MainLayout from "@/components/layout/MainLayout"
+import { FullScreenLoader } from "@/components/ui/full-screen-loader"
 import { useQuery } from "@tanstack/react-query"
 import moment from "moment"
 import {
@@ -61,6 +62,10 @@ export default function ReportsPage() {
     ? Math.max(...weekly.map((item) => Math.max(item.inflow, item.outflow)))
     : 1
 
+  if (isLoading) {
+    return <FullScreenLoader label="Loading reports…" variant="content" />
+  }
+
   return (
     <MainLayout>
       <header className="space-y-1">
@@ -71,14 +76,7 @@ export default function ReportsPage() {
         </p>
       </header>
 
-      {isLoading ? (
-        <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
-          <p className="text-sm font-medium text-zinc-900">Loading reports…</p>
-          <p className="text-xs text-zinc-600">
-            Crunching loans, collections, and cash movements.
-          </p>
-        </div>
-      ) : isError ? (
+      {isError ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow-sm">
           <p className="text-sm font-semibold text-red-800">Couldn’t load reports</p>
           <p className="text-xs text-red-700">Please refresh and try again.</p>

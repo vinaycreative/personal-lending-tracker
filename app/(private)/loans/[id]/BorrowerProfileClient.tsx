@@ -20,6 +20,7 @@ import MainLayout from "@/components/layout/MainLayout"
 import { loanDetailQuery, updateLoanMutation, type PaymentStatus } from "@/queries/loanQueries"
 import { AxiosError } from "axios"
 import { toast } from "sonner"
+import { FullScreenLoader } from "@/components/ui/full-screen-loader"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -168,13 +169,7 @@ export default function BorrowerProfileClient({ loanId }: { loanId: string }) {
   const [draft, setDraft] = useState<EditDraft | null>(null)
 
   if (detailQuery.isLoading) {
-    return (
-      <MainLayout>
-        <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-sm text-zinc-600">Loading loan…</p>
-        </section>
-      </MainLayout>
-    )
+    return <FullScreenLoader label="Loading loan…" variant="content" />
   }
 
   if (detailQuery.isError || !detailQuery.data) {
