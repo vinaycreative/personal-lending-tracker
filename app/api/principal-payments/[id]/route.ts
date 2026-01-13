@@ -160,7 +160,7 @@ export async function PUT(request: Request, context: { params: Params | Promise<
   if (!recompute.ok) return Response.json({ error: recompute.error }, { status: 500 })
 
   return Response.json(
-    { ok: true, payment_id: paymentId, loan_id: loanId, ...recompute },
+    { payment_id: paymentId, loan_id: loanId, ...recompute },
     { status: 200 }
   )
 }
@@ -215,7 +215,7 @@ export async function DELETE(_request: Request, context: { params: Params | Prom
   if (!recompute.ok) return Response.json({ error: recompute.error }, { status: 500 })
 
   return Response.json(
-    { ok: true, payment_id: paymentId, loan_id: loanId, ...recompute },
+    { payment_id: paymentId, loan_id: loanId, ...recompute },
     { status: 200 }
   )
 }
