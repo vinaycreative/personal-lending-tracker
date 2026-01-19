@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 import PublicLayout from "@/components/layout/PublicLayout"
 import { Button } from "@/components/ui/button"
@@ -117,6 +118,7 @@ export default function Home() {
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
       </form>
+      <p>By <Link href="https://vnaycreative.com">Vinaycreative</Link></p>
     </PublicLayout>
   )
 }
