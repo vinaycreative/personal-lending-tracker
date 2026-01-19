@@ -118,7 +118,7 @@ export default function Home() {
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
       </form>
-      <p className="text-sm">By <Link href="https://vnaycreative.com">Vinaycreative</Link></p>
+      <p className="text-sm text-center mt-4">By <Link href="https://vnaycreative.com" className="text-blue-500 font-semibold">Vinaycreative</Link></p>
     </PublicLayout>
   )
 }
